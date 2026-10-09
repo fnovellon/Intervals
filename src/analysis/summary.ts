@@ -1,0 +1,180 @@
+import type { RepSet, Segment, Summary } from "./model";
+
+const NICE_DISTANCES = [
+  50, 100, 150, 200, 250, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 2400, 3000, 3200, 4000, 5000, 6000,
+  8000, 10000,
+];
+const MILE = 1609.344;
+
+const median = (v: number[]): number => {
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
+const cv = (v: number[]) => (v.length > 1 && mean(v) > 0 ? Math.sqrt(mean(v.map((x) => (x - mean(v)) ** 2))) / mean(v) : 0);
+
+/** Round a distance to the number an athlete would have written in the workout. */
+export function niceDistance(m: number): { value: number; label: string; relError: number } {
+  const candidates = [...NICE_DISTANCES, MILE / 4, MILE / 2, MILE, 2 * MILE, 3 * MILE];
+  let best = candidates[0];
+  for (const c of candidates) if (Math.abs(c - m) / m < Math.abs(best - m) / m) best = c;
+  const relError = Math.abs(best - m) / m;
+  const isMiles = [MILE / 4, MILE / 2, MILE, 2 * MILE, 3 * MILE].includes(best);
+  if (relError > 0.04) {
+    // Not a standard distance: just print what was run.
+    const value = m < 1000 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50;
+    return { value, label: formatMetres(value), relError };
+  }
+  if (isMiles) {
+    const mi = best / MILE;
+    return { value: best, label: `${mi === 0.25 ? "¼" : mi === 0.5 ? "½" : String(mi)} mi`, relError };
+  }
+  return { value: best, label: formatMetres(best), relError };
+}
+
+function formatMetres(m: number): string {
+  return m >= 1000 ? `${trimZeros(m / 1000)} km` : `${Math.round(m)} m`;
+}
+
+/** Round a duration to a number of seconds somebody would put in a workout. */
+export function niceDuration(s: number): { value: number; label: string; relError: number } {
+  const step = s < 60 ? 5 : s <= 300 ? 15 : 30;
+  const v = Math.max(step, Math.round(s / step) * step);
+  const relError = Math.abs(v - s) / s;
+  if (v < 120) return { value: v, label: `${v} s`, relError };
+  const min = Math.floor(v / 60);
+  const sec = v % 60;
+  return { value: v, label: sec === 0 ? `${min} min` : `${min}:${String(sec).padStart(2, "0")}`, relError };
+}
+
+function trimZeros(x: number): string {
+  return x.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/** Group consecutive reps that look like the same prescription. */
+export function groupReps(reps: Segment[]): number[][] {
+  const groups: number[][] = [];
+  for (let i = 0; i < reps.length; i++) {
+    const g = groups[groups.length - 1];
+    if (g) {
+      const medD = median(g.map((k) => reps[k].distance));
+      const medT = median(g.map((k) => reps[k].duration));
+      const near = (a: number, b: number) => b > 0 && Math.abs(a - b) / b <= 0.2;
+      if (near(reps[i].distance, medD) && near(reps[i].duration, medT)) {
+        g.push(i);
+        continue;
+      }
+    }
+    groups.push([i]);
+  }
+  return groups;
+}
+
+function describeGroup(reps: Segment[], idx: number[]): string {
+  const dist = idx.map((i) => reps[i].distance);
+  const dur = idx.map((i) => reps[i].duration);
+  const d = niceDistance(median(dist));
+  const t = niceDuration(median(dur));
+  // Describe the rep by whichever of distance / duration is the rounder number
+  // (800 m, 2 min); if they tie, by whichever varies less across the group.
+  let timeBased: boolean;
+  if (Math.abs(d.relError - t.relError) > 0.005) timeBased = t.relError < d.relError;
+  else timeBased = idx.length >= 2 && cv(dur) < cv(dist) * 0.8;
+  const what = timeBased ? t.label : d.label;
+  return idx.length === 1 ? what : `${idx.length} × ${what}`;
+}
+
+export function summarize(segments: Segment[]): Summary | null {
+  const reps = segments.filter((s) => s.kind === "work");
+  if (reps.length === 0) return null;
+
+  const groups = groupReps(reps);
+  const sets: RepSet[] = groups.map((g) => ({ repIndices: g, label: describeGroup(reps, g) }));
+  const main = [...groups].sort(
+    (a, b) => b.length - a.length || sum(b.map((i) => reps[i].distance)) - sum(a.map((i) => reps[i].distance)),
+  )[0];
+
+  const totalWorkTime = sum(reps.map((r) => r.duration));
+  const totalWorkDistance = sum(reps.map((r) => r.distance));
+  const workMoving = sum(reps.map((r) => r.movingTime));
+  const rests = segments.filter((s) => s.kind === "rest");
+  const totalRestTime = sum(rests.map((r) => r.duration));
+
+  // Consistency metrics are computed on the main set so a pyramid or a stride
+  // block does not distort them.
+  const speeds = main.map((i) => reps[i].avgSpeed);
+  let fastestRep = main[0];
+  let slowestRep = main[0];
+  for (const i of main) {
+    if (reps[i].avgSpeed > reps[fastestRep].avgSpeed) fastestRep = i;
+    if (reps[i].avgSpeed < reps[slowestRep].avgSpeed) slowestRep = i;
+  }
+  const pace = (v: number) => (v > 0 ? 1000 / v : NaN);
+  const first = reps[main[0]];
+  const last = reps[main[main.length - 1]];
+
+  // Least-squares slope of pace against rep number.
+  let slope = 0;
+  if (main.length >= 3) {
+    const xs = main.map((_, k) => k);
+    const ys = main.map((i) => pace(reps[i].avgSpeed));
+    const mx = mean(xs);
+    const my = mean(ys);
+    const den = sum(xs.map((x) => (x - mx) ** 2));
+    slope = den > 0 ? sum(xs.map((x, k) => (x - mx) * (ys[k] - my))) / den : 0;
+  }
+
+  const hrReps = reps.filter((r) => r.avgHr !== undefined);
+  const avgWorkHr = hrReps.length ? sum(hrReps.map((r) => r.avgHr! * r.duration)) / sum(hrReps.map((r) => r.duration)) : undefined;
+  const peakHr = hrReps.length ? Math.max(...hrReps.map((r) => r.maxHr ?? 0)) : undefined;
+  const hrDrift =
+    main.length >= 2 && first.hrEnd !== undefined && last.hrEnd !== undefined ? last.hrEnd - first.hrEnd : undefined;
+
+  // Recovery: HR at the end of a rep minus HR at the end of the rest that follows.
+  const drops: number[] = [];
+  for (let k = 1; k + 1 < segments.length; k++) {
+    const s = segments[k];
+    if (s.kind === "rest" && segments[k - 1].kind === "work" && segments[k + 1].kind === "work") {
+      const before = segments[k - 1].hrEnd;
+      if (before !== undefined && s.hrEnd !== undefined) drops.push(before - s.hrEnd);
+    }
+  }
+
+  const between = rests.filter((r, _i) => {
+    const k = segments.indexOf(r);
+    return segments[k - 1]?.kind === "work" && segments[k + 1]?.kind === "work";
+  });
+  const restTimes = (between.length ? between : rests).map((r) => r.duration);
+
+  let structure = groups.length <= 4 ? sets.map((s) => s.label).join(" + ") : reps.map((_, i) => describeGroup(reps, [i])).join(" · ");
+  if (restTimes.length) structure += ` / ${niceDuration(median(restTimes)).label} rest`;
+
+  return {
+    repCount: reps.length,
+    totalWorkTime,
+    totalWorkDistance,
+    totalRestTime,
+    avgWorkSpeed: workMoving > 0 ? totalWorkDistance / workMoving : 0,
+    fastestRep,
+    slowestRep,
+    mainSet: main,
+    paceSpreadSecPerKm: pace(reps[slowestRep].avgSpeed) - pace(reps[fastestRep].avgSpeed),
+    paceCvPct: cv(speeds) * 100,
+    firstToLastPct: main.length >= 2 ? ((last.avgSpeed - first.avgSpeed) / first.avgSpeed) * 100 : 0,
+    paceTrendSecPerKmPerRep: slope,
+    avgRestTime: restTimes.length ? mean(restTimes) : 0,
+    medianRestTime: restTimes.length ? median(restTimes) : 0,
+    workRestRatio: totalRestTime > 0 ? totalWorkTime / totalRestTime : Infinity,
+    avgWorkHr,
+    peakHr,
+    hrDrift,
+    avgHrRecovery: drops.length ? mean(drops) : undefined,
+    structure,
+    sets,
+  };
+}
+
+function sum(v: number[]): number {
+  return v.reduce((a, b) => a + b, 0);
+}

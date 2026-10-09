@@ -1,0 +1,90 @@
+import type { Activity } from "../fit/types";
+import { detectLaps } from "./laps";
+import { measureAll } from "./measure";
+import { DEFAULT_OPTIONS, type DetectOptions, type Detection, type SegmentSpec } from "./model";
+import { detectSignal } from "./signal";
+import { summarize } from "./summary";
+import { buildSeries, type Series } from "./timeseries";
+
+export interface Analysis {
+  series: Series;
+  detection: Detection;
+}
+
+/** Decode-to-result in one call: build the 1 Hz series and detect intervals. */
+export function analyseActivity(activity: Activity, options: Partial<DetectOptions> = {}): Analysis {
+  const series = buildSeries(activity);
+  return { series, detection: detect(activity, series, options) };
+}
+
+/** Re-run detection with new options on an existing series (cheap). */
+export function detect(activity: Activity, series: Series, partial: Partial<DetectOptions> = {}): Detection {
+  const options: DetectOptions = { ...DEFAULT_OPTIONS, ...partial };
+  const notes = [...series.notes];
+
+  const useGap = options.signal === "gap";
+  if (useGap && !series.hasAltitude) notes.push("No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.");
+  const signal = useGap && series.hasAltitude ? series.gapSpeed : series.speed;
+
+  if (options.mode !== "signal") {
+    const lap = detectLaps(activity.laps, activity.steps, series, signal, options);
+    if (lap.informative) {
+      return assemble(series, lap.specs, {
+        modeUsed: "laps",
+        modeReason: lap.reason,
+        threshold: lap.threshold,
+        separation: lap.separation,
+        notes: [...notes, ...lap.notes],
+        options,
+      });
+    }
+    notes.push(
+      options.mode === "laps"
+        ? `Lap mode unavailable (${lap.reason}) — used the pace signal instead.`
+        : `Laps not used: ${lap.reason}`,
+    );
+  }
+
+  const sig = detectSignal(series, signal, options);
+  return assemble(series, sig.specs, {
+    modeUsed: "signal",
+    modeReason: "Intervals were found from the pace signal (change-point detection).",
+    threshold: sig.threshold,
+    separation: sig.separation,
+    notes: [...notes, ...sig.notes],
+    options,
+  });
+}
+
+/**
+ * Recompute metrics, reps and summary from a list of segment specs. Used by
+ * the detectors and by manual edits (moving a boundary, changing a type).
+ */
+export function assemble(
+  series: Series,
+  specs: SegmentSpec[],
+  meta: Pick<Detection, "modeUsed" | "modeReason" | "notes" | "options"> &
+    Partial<Pick<Detection, "threshold" | "separation">>,
+): Detection {
+  const segments = measureAll(series, specs);
+  const reps = segments.filter((s) => s.kind === "work");
+  return {
+    ...meta,
+    segments,
+    reps,
+    summary: summarize(segments),
+    intervalsFound: reps.length >= 2,
+  };
+}
+
+/** Rebuild a detection after the user edited segment specs. */
+export function rebuild(series: Series, specs: SegmentSpec[], previous: Detection): Detection {
+  return assemble(series, specs, {
+    modeUsed: previous.modeUsed,
+    modeReason: previous.modeReason,
+    threshold: previous.threshold,
+    separation: previous.separation,
+    notes: previous.notes,
+    options: previous.options,
+  });
+}

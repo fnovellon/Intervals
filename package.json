@@ -1,0 +1,24 @@
+{
+  "name": "intervals",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser-only analyser for Garmin FIT interval workouts",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bench": "vitest run bench --reporter=verbose"
+  },
+  "dependencies": {
+    "@garmin/fitsdk": "^21.218.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.3"
+  }
+}
