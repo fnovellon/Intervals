@@ -50,6 +50,10 @@ export const en = {
   "note.distFromGps": "Distance reconstructed from GPS positions.",
   "note.speedFromDist": "Speed derived from distance (no device speed in file).",
   "note.lag": "Device speed trails the distance curve by about {lag} s; boundaries were compensated.",
+  "note.speedLower":
+    "In this file the speed recorded by the watch is on average {pct} % lower than the speed implied by its own distance, so the plotted pace looks slower than the table. The table uses distance ÷ time, like the lap table in Garmin Connect.",
+  "note.speedHigher":
+    "In this file the speed recorded by the watch is on average {pct} % higher than the speed implied by its own distance, so the plotted pace looks faster than the table. The table uses distance ÷ time, like the lap table in Garmin Connect.",
   "note.hilly": "Hilly route: intervals were segmented on grade-adjusted pace.",
   "note.noAltitude": "No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.",
   "note.lapUnavailable": "Lap mode unavailable ({reason}) — used the pace signal instead.",
@@ -89,9 +93,22 @@ export const en = {
   "tb.sensitivity": "Sensitivity",
   "tb.sensitivityTitle":
     "How small a change of pace counts as the start or end of an interval. Higher finds shorter, subtler changes; lower ignores small variations.",
-  "tb.edge": "Edge position",
-  "tb.edgeTitle":
-    "Where on a change of pace an interval starts and ends. 50 % = half-way (default). Lower: intervals start earlier and end later. Higher: only the part close to full pace counts.",
+  "tb.edges": "Interval edges",
+  "tb.edgesTitle": "How the start and the end of each interval are placed on the change of pace.",
+  "tb.preset": "Strategy",
+  "tb.preset.beep": "Beep to beep",
+  "tb.preset.half": "Half-way",
+  "tb.preset.plateau": "Steady pace only",
+  "tb.preset.custom": "Custom",
+  "tb.presetTitle":
+    "Beep to beep: from the first clear acceleration until just before the pace drops, as the watch's beep and the whistle define it. Half-way: the middle of each change of pace. Steady pace only: just the plateau (cleanest pace, but shorter reps).",
+  "tb.startAt": "Start when effort reaches",
+  "tb.startTitle": "Share of the full effort the pace must reach for the interval to start. Lower: it starts earlier, at the first sign of acceleration.",
+  "tb.endAt": "End when effort falls to",
+  "tb.endTitle": "Share of the full effort the pace drops to for the interval to end. Higher: it ends earlier, right when the pace begins to drop.",
+  "tb.reaction": "Reaction time (s)",
+  "tb.reactionTitle": "Delay between the beep or whistle and the pace changing. Both edges are moved this much earlier.",
+  "tb.edgeSummary": "start {start} · end {end} · reaction {reaction} s",
   "tb.minRepTitle": "Shortest hard effort that counts as an interval, in seconds.",
   "tb.minRestTitle": "Shortest recovery that separates two intervals, in seconds.",
   "tb.thresholdTitle": "The pace that separates hard from easy. Leave empty for automatic.",
@@ -156,6 +173,11 @@ export const en = {
   "insp.mergeNext": "Merge next →",
   "insp.split": "Split in half",
   "insp.reset": "Reset edits",
+  "insp.paceCheckFaster":
+    "Table: {table} (distance ÷ time) · chart: {chart} (average of the plotted speed). The table is {pct} faster.",
+  "insp.paceCheckSlower":
+    "Table: {table} (distance ÷ time) · chart: {chart} (average of the plotted speed). The table is {pct} slower.",
+  "insp.paused": "{n} s with the timer stopped are left out of the table pace.",
   "insp.placeStart": "Place start on chart",
   "insp.placeEnd": "Place end on chart",
   "place.banner.start": "Click on the chart where “{name}” should start · Esc to cancel",

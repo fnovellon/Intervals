@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { analyseActivity } from "../src/analysis/detect";
+import { EDGE_PRESETS } from "../src/analysis/model";
 import { synthesize, WORKOUTS, type SynthOptions, type WorkoutName } from "../src/sample/synth";
 import { pct, score } from "./helpers";
 
@@ -48,7 +49,8 @@ describe("precision benchmark", () => {
       let nReps = 0;
       for (let seed = 1; seed <= SEEDS; seed++) {
         const { activity, truth } = synthesize({ steps: WORKOUTS[sc.workout](), seed, lapMode: "none", ...sc.synth });
-        const { detection } = analyseActivity(activity, { mode: "signal", signal: sc.signal ?? "speed" });
+        // the truth in this table is the physical half-way point of each change of pace
+        const { detection } = analyseActivity(activity, { mode: "signal", signal: sc.signal ?? "speed", ...EDGE_PRESETS.half });
         const s = score(truth, detection);
         total++;
         if (s.exactCount) exact++;
@@ -77,5 +79,46 @@ describe("precision benchmark", () => {
       expect(r.exact, `${sc.name}: rep count must be exact`).toBeGreaterThanOrEqual(90);
       expect(r.p95, `${sc.name}: boundary p95`).toBeLessThan(sc.maxP95 ?? 2.5);
     }
+  });
+});
+
+
+/**
+ * The default strategy (beep to beep) against the real beep: a simulated athlete who reacts 0.6 s after
+ * the beep, with the truth being the beep itself. Compared with the half-way strategy.
+ */
+describe("beep-to-beep strategy vs the real beep", () => {
+  const CASES: Array<{ name: string; workout: WorkoutName; synth: Partial<SynthOptions>; maxP95: number }> = [
+    { name: "typical", workout: "8x400", synth: {}, maxP95: 1.2 },
+    { name: "noisy GPS + spikes", workout: "8x400", synth: { gpsNoise: 0.3, spikeRate: 0.01 }, maxP95: 3 },
+    { name: "heavy smoothing", workout: "6x800", synth: { deviceSmoothing: 3.5 }, maxP95: 1.6 },
+    { name: "slow acceleration", workout: "8x400", synth: { athleteTau: 6 }, maxP95: 2.6 },
+    { name: "short reps 200", workout: "12x200", synth: {}, maxP95: 1 },
+    { name: "fartlek", workout: "fartlek", synth: { gpsNoise: 0.2 }, maxP95: 3 },
+  ];
+
+  it("finds the beeps closer than half-way does, and never loses a rep", () => {
+    const rows: string[] = ["case                       beep-to-beep |err| mean / p95   half-way mean   dist err % mean"];
+    for (const c of CASES) {
+      const err = { beep: [] as number[], half: [] as number[] };
+      const dist: number[] = [];
+      for (let seed = 1; seed <= 12; seed++) {
+        const sy = synthesize({ steps: WORKOUTS[c.workout](), seed, lapMode: "none", truthAt: "command", reaction: 0.6, ...c.synth });
+        for (const which of ["beep", "half"] as const) {
+          const { detection } = analyseActivity(sy.activity, { mode: "signal", ...(which === "half" ? EDGE_PRESETS.half : {}) });
+          const s = score(sy.truth, detection);
+          expect(s.exactCount, `${c.name} ${which} seed ${seed}`).toBe(true);
+          for (const m of s.matched) {
+            err[which].push(Math.abs(m.startErr), Math.abs(m.endErr));
+            if (which === "beep") dist.push(Math.abs(m.distErrPct));
+          }
+        }
+      }
+      const mean = (v: number[]) => v.reduce((a, x) => a + x, 0) / v.length;
+      rows.push(`${c.name.padEnd(26)} ${mean(err.beep).toFixed(2).padStart(6)} / ${pct(err.beep, 0.95).toFixed(2).padStart(5)}${mean(err.half).toFixed(2).padStart(20)}${mean(dist).toFixed(2).padStart(18)}`);
+      expect(pct(err.beep, 0.95), `${c.name}: p95`).toBeLessThan(c.maxP95);
+      expect(mean(err.beep), `${c.name}: better than half-way`).toBeLessThan(mean(err.half));
+    }
+    console.log("\n" + rows.join("\n"));
   });
 });

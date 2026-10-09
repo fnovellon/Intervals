@@ -60,8 +60,8 @@ public, but files you drop on it are still analysed only in the visitor's browse
 threshold, sensitivity and minimum rep / rest length are adjustable. Every
 boundary can be corrected with the mouse or keyboard, and everything recomputes:
 
-- **Drag** a boundary (the line and grip are always visible; grab it anywhere along its height).
-  Zoom in first (drag across the chart) for sub-second control.
+- **Drag** a boundary by its grip in the header strip above the chart (the line through the chart is only
+  a guide, so dragging across the chart to zoom never moves a boundary). Zoom in first for sub-second control.
 - **Place on chart**: select a rep, press *Place start on chart* / *Place end on chart*, then
   click where it should begin or end. A guide line follows the pointer and the tooltip shows the
   pace under it, which makes it easy to pick the middle of a slow ramp. Esc cancels.
@@ -75,13 +75,24 @@ boundary can be corrected with the mouse or keyboard, and everything recomputes:
 | **Source** | Device laps, the pace signal, or Auto (laps when they carry real structure). |
 | **Pace type** | Plain pace, grade-adjusted pace (hills), or Auto (grade-adjusted on hilly routes). |
 | **Sensitivity** | How small a change of pace counts as the start/end of an interval. Higher finds shorter, subtler changes. |
-| **Edge position** | *Where on a change of pace* an interval starts and ends. 50 % = half-way (default). Lower: reps start earlier and end later; higher: only the part close to full pace counts. Use it when a slow build-up makes a rep look too early or too late. |
+| **Interval edges** | *Where on a change of pace* an interval starts and ends. **Beep to beep** (default): from the first clear acceleration (effort 20 %) until just before the pace drops (effort 80 %), moved back by a 0.5 s reaction time. **Half-way**: the middle of each change. **Steady pace only**: just the plateau (cleanest pace, but shorter reps). Start, end and reaction time can also be set by hand. |
 | **Min rep / Min rest** | Shortest hard effort and shortest recovery that count. |
 | **Work/rest threshold** | The pace that separates hard from easy (automatic by default). |
 | **Snap laps to pace** | Moves lap-button laps to the nearest real change of pace. |
 
-`samples/8x400-slow-acceleration.fit` has a slow ~30 s build-up into each rep: try moving
-*Edge position* between 25 % and 75 % and watch the starts and ends move.
+Why beep to beep? When the watch beeps (or a whistle blows) the pace only changes a moment later, and the
+pace drops a moment after the end beep. Measured against the real beep on simulated sessions, half-way
+placement lands about 2 s (up to 4.7 s on slow ramps) late on both edges, while beep to beep lands within
+0.3-1.1 s (`npm run bench`). The price: a rep includes its acceleration, so its average pace is a few
+seconds per km slower than the steady pace (the same as the watch's own lap average). Use *Steady pace only*
+for the cleanest pace, knowing that reps then come out about 5 s / 7 % short.
+
+`samples/8x400-slow-acceleration.fit` has a slow ~30 s build-up into each rep: try the three strategies
+and watch the starts and ends move.
+
+**Table vs chart.** The table's pace is distance ÷ time (like the lap table in Garmin Connect); the chart plots
+the speed the watch recorded. They normally agree. If a file's speed channel and its distance disagree by
+more than 3 % (different sensors feeding each), the app says so, and selecting an interval shows both numbers.
 
 ## How the detection works
 

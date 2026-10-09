@@ -2,7 +2,7 @@ import { detect, rebuild } from "../analysis/detect";
 import { structureText } from "../analysis/summary";
 import { AppError, getLocale, LOCALES, msg, nf, onLocaleChange, pct, renderMsg, setLocale, t, tn, type Key, type Locale, type Msg } from "../i18n";
 import type { DetectMode, DetectOptions, Detection, Segment, SegmentKind, SegmentSpec, SignalKind } from "../analysis/model";
-import { DEFAULT_OPTIONS } from "../analysis/model";
+import { DEFAULT_OPTIONS, EDGE_PRESETS } from "../analysis/model";
 import { buildSeries, type Series } from "../analysis/timeseries";
 import { parseFit } from "../fit/parse";
 import type { Activity } from "../fit/types";
@@ -413,23 +413,68 @@ export function mountApp(root: HTMLElement) {
       timer = window.setTimeout(recompute, 90);
     });
 
-    const edgeLabel = h("span", { class: "val" }, pct(state.options.edgeFraction * 100, 0));
-    const edge = h("input", {
-      type: "range",
-      min: "0.2",
-      max: "0.8",
-      step: "0.05",
-      value: String(state.options.edgeFraction),
-      "aria-label": t("tb.edge"),
-      title: t("tb.edgeTitle"),
-    });
+    // ---- interval edges: strategy preset + start/end effort + reaction time ---------------------
+    const PRESETS = ["beep", "half", "plateau"] as const;
+    const matchPreset = () => PRESETS.find((k) => {
+      const e = EDGE_PRESETS[k];
+      return e.startEffort === state.options.startEffort && e.endEffort === state.options.endEffort && e.reactionSec === state.options.reactionSec;
+    }) ?? "custom";
+    const edgeSlider = (labelKey: Key, titleKey: Key, key: "startEffort" | "endEffort") => {
+      const out = h("span", { class: "val" }, pct(state.options[key] * 100, 0));
+      const input = h("input", { type: "range", min: "0.05", max: "0.95", step: "0.05", value: String(state.options[key]), "aria-label": t(labelKey), title: t(titleKey) });
+      input.addEventListener("input", () => {
+        state.options[key] = Number(input.value);
+        out.textContent = pct(state.options[key] * 100, 0);
+        edgesChanged();
+      });
+      const row = h("div", { class: "field", title: t(titleKey) }, h("span", { class: "lbl" }, t(labelKey)), h("span", { class: "row" }, input, out));
+      return { row, input, out };
+    };
+    const startCtl = edgeSlider("tb.startAt", "tb.startTitle", "startEffort");
+    const endCtl = edgeSlider("tb.endAt", "tb.endTitle", "endEffort");
+    const reaction = h("input", { type: "number", min: "0", max: "3", step: "0.1", value: String(state.options.reactionSec), id: "f-reaction", "aria-label": t("tb.reaction") });
+    const preset = h("select", { "aria-label": t("tb.preset"), id: "f-preset" });
+    for (const k of [...PRESETS, "custom"] as const) preset.append(h("option", { value: k }, t(`tb.preset.${k}` as Key)));
+    const summary = h("summary", { title: t("tb.edgesTitle") });
+    const refreshEdges = () => {
+      const k = matchPreset();
+      preset.value = k;
+      startCtl.input.value = String(state.options.startEffort);
+      startCtl.out.textContent = pct(state.options.startEffort * 100, 0);
+      endCtl.input.value = String(state.options.endEffort);
+      endCtl.out.textContent = pct(state.options.endEffort * 100, 0);
+      reaction.value = String(state.options.reactionSec);
+      summary.textContent = `${t("tb.edges")}${getLocale() === "fr" ? "\u00A0" : ""}: ${t(`tb.preset.${k}` as Key)} (${t("tb.edgeSummary", { start: pct(state.options.startEffort * 100, 0), end: pct(state.options.endEffort * 100, 0), reaction: nf(state.options.reactionSec, 1) })})`;
+    };
     let edgeTimer: number | undefined;
-    edge.addEventListener("input", () => {
-      edgeLabel.textContent = pct(Number(edge.value) * 100, 0);
-      state.options.edgeFraction = Number(edge.value);
+    const edgesChanged = () => {
+      refreshEdges();
       window.clearTimeout(edgeTimer);
       edgeTimer = window.setTimeout(recompute, 90);
+    };
+    preset.addEventListener("change", () => {
+      if (preset.value === "custom") return;
+      Object.assign(state.options, EDGE_PRESETS[preset.value as (typeof PRESETS)[number]]);
+      edgesChanged();
     });
+    reaction.addEventListener("change", () => {
+      state.options.reactionSec = Math.min(3, Math.max(0, Number(reaction.value) || 0));
+      edgesChanged();
+    });
+    const edgesGroup = h(
+      "details",
+      { class: "edges" },
+      summary,
+      h(
+        "div",
+        { class: "edges-body" },
+        h("div", { class: "field", title: t("tb.presetTitle") }, h("label", { for: "f-preset" }, t("tb.preset")), preset),
+        startCtl.row,
+        endCtl.row,
+        h("div", { class: "field", title: t("tb.reactionTitle") }, h("label", { for: "f-reaction" }, t("tb.reaction")), reaction),
+      ),
+    );
+    refreshEdges();
 
     const numberField = (label: string, key: "minWorkSec" | "minRestSec", min: number, max: number, title: string) => {
       const input = h("input", { type: "number", min: String(min), max: String(max), step: "1", value: String(state.options[key]), id: `f-${key}` });
@@ -482,13 +527,13 @@ export function mountApp(root: HTMLElement) {
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.source")), segmented<DetectMode>([["auto", t("tb.auto")], ["laps", t("tb.laps")], ["signal", t("tb.signal")]], () => state.options.mode, (v) => { state.options.mode = v; recompute(); })),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.paceType")), segmented<SignalKind>([["auto", t("tb.auto")], ["speed", sd.isPace ? t("tb.pace") : t("tb.speed")], ["gap", t("tb.gap")]], () => state.options.signal, (v) => { state.options.signal = v; recompute(); })),
       h("div", { class: "field", title: t("tb.sensitivityTitle") }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, sens, sensLabel)),
-      h("div", { class: "field", title: t("tb.edgeTitle") }, h("span", { class: "lbl" }, t("tb.edge")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, edge, edgeLabel)),
       numberField(t("tb.minRep"), "minWorkSec", 3, 600, t("tb.minRepTitle")),
       numberField(t("tb.minRest"), "minRestSec", 2, 600, t("tb.minRestTitle")),
       h("div", { class: "field", title: t("tb.thresholdTitle") }, h("label", { for: "f-thr" }, t("tb.threshold", { unit: sd.unit })), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, thr, thrNote)),
       h("div", { class: "field check" }, snap, h("label", { for: "f-snap", title: t("tb.snapTitle") }, t("tb.snap"))),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.units")), segmented<Units>([["metric", t("tb.km")], ["imperial", t("tb.mi")]], () => state.units, (v) => { state.units = v; renderToolbarUnits(); renderResults(); })),
     );
+    bar.append(edgesGroup);
     toolbarHost.append(head, bar);
     syncThreshold();
   }
@@ -622,7 +667,26 @@ export function mountApp(root: HTMLElement) {
       kind.append(o);
     }
     kind.addEventListener("change", () => setKind(sg.id, kind.value as SegmentKind));
-    return h(
+
+    // Why can the table and the chart differ? Show both numbers whenever they do.
+    const series = state.series!;
+    let sum = 0;
+    let count = 0;
+    for (let i = Math.ceil(sg.start); i < Math.ceil(sg.end) && i < series.n; i++) {
+      if (!series.paused[i]) {
+        sum += series.speed[i];
+        count++;
+      }
+    }
+    const chartV = count ? sum / count : 0;
+    const rel = chartV > 0.5 && sg.avgSpeed > 0.5 ? (sg.avgSpeed - chartV) / chartV : 0;
+    const checks: string[] = [];
+    if (Math.abs(rel) >= PACE_CHECK_DIFF) {
+      checks.push(t(rel > 0 ? "insp.paceCheckFaster" : "insp.paceCheckSlower", { table: sd.formatWithUnit(sg.avgSpeed), chart: sd.formatWithUnit(chartV), pct: pct(Math.abs(rel) * 100, 1) }));
+    }
+    if (sg.paused >= 1 && sg.paused <= 0.5 * sg.duration) checks.push(t("insp.paused", { n: Math.round(sg.paused) }));
+
+    const bar = h(
       "div",
       { class: "inspector" },
       h("span", { class: "title" }, sg.kind === "work" ? t("insp.rep", { n: repNo }) : kindLabel(sg.kind)),
@@ -636,6 +700,7 @@ export function mountApp(root: HTMLElement) {
       h("button", { class: "btn small", disabled: sg.duration < 2 * MIN_SPLIT, on: { click: () => split(sg.id) } }, t("insp.split")),
       state.edited ? h("button", { class: "btn small", on: { click: recompute } }, t("insp.reset")) : null,
     );
+    return checks.length ? h("div", {}, bar, h("div", { class: "hint insp-check" }, checks.join(" "))) : bar;
   }
 
   function tilesFor(d: Detection, sd: ReturnType<typeof speedDisplay>) {
@@ -816,6 +881,9 @@ export function mountApp(root: HTMLElement) {
 }
 
 const MIN_SPLIT = 5;
+
+/** Show the table-vs-chart comparison for a segment when the two paces differ by at least this fraction. */
+const PACE_CHECK_DIFF = 0.02;
 
 /** Show the grade-adjusted column only when it differs from the pace by at least this fraction somewhere. */
 const GAP_VISIBLE_DIFF = 0.015;

@@ -52,6 +52,10 @@ export const fr: Record<Key, string> = {
   "note.speedFromDist": "Vitesse déduite de la distance (pas de vitesse de l’appareil dans le fichier).",
   "note.lag":
     "La vitesse de l’appareil retarde d’environ {lag} s sur la courbe de distance ; les limites ont été compensées.",
+  "note.speedLower":
+    "Dans ce fichier, la vitesse enregistrée par la montre est en moyenne inférieure de {pct}\u00A0% à celle que donne sa propre distance\u00A0: l’allure tracée paraît donc plus lente que celle du tableau. Le tableau utilise distance ÷ temps, comme le tableau des tours de Garmin Connect.",
+  "note.speedHigher":
+    "Dans ce fichier, la vitesse enregistrée par la montre est en moyenne supérieure de {pct}\u00A0% à celle que donne sa propre distance\u00A0: l’allure tracée paraît donc plus rapide que celle du tableau. Le tableau utilise distance ÷ temps, comme le tableau des tours de Garmin Connect.",
   "note.hilly": "Parcours vallonné : les intervalles ont été segmentés sur l’allure ajustée à la pente.",
   "note.noAltitude":
     "Pas de données d’altitude dans ce fichier : l’allure ajustée à la pente est indisponible, l’allure brute est utilisée.",
@@ -95,9 +99,22 @@ export const fr: Record<Key, string> = {
   "tb.sensitivity": "Sensibilité",
   "tb.sensitivityTitle":
     "Variation d’allure minimale pour marquer le début ou la fin d’un intervalle. Plus haut : détecte des changements plus courts et plus discrets ; plus bas : ignore les petites variations.",
-  "tb.edge": "Position des limites",
-  "tb.edgeTitle":
-    "Endroit, sur un changement d’allure, où un intervalle commence et se termine. 50 % = à mi-chemin (par défaut). Plus bas : les intervalles commencent plus tôt et finissent plus tard. Plus haut : seule la partie proche de l’allure maximale compte.",
+  "tb.edges": "Limites des intervalles",
+  "tb.edgesTitle": "Comment le début et la fin de chaque intervalle sont placés sur le changement d’allure.",
+  "tb.preset": "Stratégie",
+  "tb.preset.beep": "Bip à bip",
+  "tb.preset.half": "Mi-chemin",
+  "tb.preset.plateau": "Allure stable seulement",
+  "tb.preset.custom": "Personnalisé",
+  "tb.presetTitle":
+    "Bip à bip\u00A0: de la première vraie accélération jusqu’au moment où l’allure commence à baisser, comme le définissent le bip de la montre et le coup de sifflet. Mi-chemin\u00A0: le milieu de chaque changement d’allure. Allure stable seulement\u00A0: uniquement le plateau (allure la plus propre, mais répétitions plus courtes).",
+  "tb.startAt": "Début quand l’effort atteint",
+  "tb.startTitle": "Part de l’effort maximal que l’allure doit atteindre pour que l’intervalle commence. Plus bas\u00A0: il commence plus tôt, dès les premiers signes d’accélération.",
+  "tb.endAt": "Fin quand l’effort tombe à",
+  "tb.endTitle": "Part de l’effort maximal à laquelle l’allure doit retomber pour que l’intervalle se termine. Plus haut\u00A0: il se termine plus tôt, dès que l’allure commence à baisser.",
+  "tb.reaction": "Temps de réaction (s)",
+  "tb.reactionTitle": "Délai entre le bip ou le coup de sifflet et le changement d’allure. Les deux limites sont avancées d’autant.",
+  "tb.edgeSummary": "début {start} · fin {end} · réaction {reaction} s",
   "tb.minRepTitle": "Durée minimale d’un effort intense pour compter comme intervalle, en secondes.",
   "tb.minRestTitle": "Durée minimale d’une récupération pour séparer deux intervalles, en secondes.",
   "tb.thresholdTitle": "L’allure qui sépare effort intense et effort facile. Laisser vide pour le mode automatique.",
@@ -163,6 +180,11 @@ export const fr: Record<Key, string> = {
   "insp.mergeNext": "Fusionner suiv. →",
   "insp.split": "Couper en deux",
   "insp.reset": "Annuler les modifications",
+  "insp.paceCheckFaster":
+    "Tableau\u00A0: {table} (distance ÷ temps) · graphique\u00A0: {chart} (moyenne de la vitesse tracée). Le tableau est {pct} plus rapide.",
+  "insp.paceCheckSlower":
+    "Tableau\u00A0: {table} (distance ÷ temps) · graphique\u00A0: {chart} (moyenne de la vitesse tracée). Le tableau est {pct} plus lent.",
+  "insp.paused": "{n} s avec le chrono arrêté ne sont pas comptées dans l’allure du tableau.",
   "insp.placeStart": "Placer le début sur le graphique",
   "insp.placeEnd": "Placer la fin sur le graphique",
   "place.banner.start": "Cliquez sur le graphique à l’endroit où «\u00A0{name}\u00A0» doit commencer · Échap pour annuler",

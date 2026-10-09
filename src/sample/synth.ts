@@ -33,6 +33,8 @@ export interface SynthOptions {
   deviceSmoothing?: number;
   /** Time constant (s) with which the athlete changes speed. */
   athleteTau?: number;
+  /** Seconds between the beep (the step changes) and the athlete reacting to it. */
+  reaction?: number;
   /** Probability per second of a GPS speed spike. */
   spikeRate?: number;
   /** Stop the timer while standing still (auto-pause). */
@@ -89,6 +91,7 @@ export function synthesize(opts: SynthOptions): Synthetic {
   const gpsNoise = opts.gpsNoise ?? 0.12;
   const devTau = opts.deviceSmoothing ?? 1.5;
   const tau = opts.athleteTau ?? 1.8;
+  const reaction = opts.reaction ?? 0;
   const spikeRate = opts.spikeRate ?? 0.002;
   const lapMode = opts.lapMode ?? "workout";
   const dt = 0.1;
@@ -105,10 +108,14 @@ export function synthesize(opts: SynthOptions): Synthetic {
   let stepT0 = 0;
   let stepD0 = 0;
   const alpha = 1 - Math.exp(-dt / tau);
+  const switchLog: Array<[number, number]> = []; // [time the beep sounded, step index it started]
   for (let k = 0; stepIdx < opts.steps.length; k++) {
     const t = k * dt;
     const step = opts.steps[stepIdx];
-    const target = step.pace > 0 ? 1000 / step.pace : 0;
+    // The athlete follows the step that was in force `reaction` seconds ago.
+    let seen = 0;
+    for (const [when, idx] of switchLog) if (when <= t - reaction) seen = idx;
+    const target = opts.steps[seen].pace > 0 ? 1000 / opts.steps[seen].pace : 0;
     if (k === 0) v = target; // start already at the first step's speed
     v += (target - v) * alpha;
     d += v * dt;
@@ -123,14 +130,17 @@ export function synthesize(opts: SynthOptions): Synthetic {
       stepIdx++;
       stepT0 = t + dt;
       stepD0 = d;
-      if (stepIdx < opts.steps.length) switchTimes.push(t + dt);
+      if (stepIdx < opts.steps.length) {
+        switchTimes.push(t + dt);
+        switchLog.push([t + dt, stepIdx]);
+      }
     }
     if (k > 20 * 3600 * 10) throw new Error("synthesize: runaway simulation");
   }
   const totalT = (speed10.length - 1) * dt;
 
   // ---- ground truth: half-way crossings -------------------------------------------
-  const lagToCrossing = opts.truthAt === "command" ? 0 : tau * Math.LN2;
+  const lagToCrossing = opts.truthAt === "command" ? 0 : reaction + tau * Math.LN2;
   const crossing: number[] = [0, ...switchTimes.map((T) => T + lagToCrossing), totalT];
   const at10 = (t: number) => Math.min(dist10.length - 1, Math.max(0, Math.round(t / dt)));
   const truth: TruthSegment[] = opts.steps.map((s, i) => ({

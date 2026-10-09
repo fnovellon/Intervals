@@ -408,8 +408,9 @@ export class TimelineChart {
     // A visible line and grip at all times, so the boundary is obviously something you can grab.
     g.append(s("line", { class: "handle-line", x1: x, x2: x, y1: top, y2: bottom }));
     g.append(s("rect", { class: "handle-grip", x: x - 2.5, y: top + STRIP_H / 2 - 6, width: 5, height: 12, rx: 2.5 }));
-    // The grab area runs the full height of the chart, not only the strip.
-    const hit = s("rect", { class: "handle-hit", x: x - 7, y: top - 2, width: 14, height: bottom - top + 2 });
+    // The grab area is the header strip only. The line through the panels is just a guide: if it were
+    // grabbable too, a drag-to-zoom that starts near a boundary would move the boundary instead.
+    const hit = s("rect", { class: "handle-hit", x: x - 7, y: top - 2, width: 14, height: STRIP_H + 4 });
     hit.append(s("title", {}, t("ch.drag")));
     g.append(hit);
 

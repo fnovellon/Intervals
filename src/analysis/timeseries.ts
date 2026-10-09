@@ -33,6 +33,11 @@ export interface Series {
   speedFromDevice: boolean;
   /** Seconds the device speed lags the distance curve (already compensated in `speed`). */
   speedLag: number;
+  /**
+   * Device speed divided by the speed implied by the distance curve, over moving samples.
+   * 1 means the two agree; 0.9 means the watch's speed reads 10 % lower than its own distance.
+   */
+  speedRatio: number;
   notes: Msg[];
 }
 
@@ -173,6 +178,25 @@ export function buildSeries(activity: Activity): Series {
     }
   }
 
+  // How well do the watch's speed and its distance agree? (Different sensors can feed each: GPS speed
+  // against an accelerometer or foot-pod distance, for instance.) The tables use distance / time, the
+  // chart plots the speed, so a gap here is exactly the gap a reader would see between them.
+  let speedRatio = 1;
+  if (speedFromDevice) {
+    let sv = 0;
+    let sdist = 0;
+    for (let i = 1; i < n - 1; i++) {
+      const implied = (dist[i + 1] - dist[i - 1]) / 2;
+      if (paused[i] || speed[i] < 1.5 || implied < 1.5) continue;
+      sv += speed[i];
+      sdist += implied;
+    }
+    if (sdist > 0) speedRatio = sv / sdist;
+    if (Math.abs(speedRatio - 1) >= SPEED_MISMATCH) {
+      notes.push(msg(speedRatio < 1 ? "note.speedLower" : "note.speedHigher", { pct: Math.round(Math.abs(speedRatio - 1) * 1000) / 10 }));
+    }
+  }
+
   // ---- altitude, grade, GAP -------------------------------------------------------
   const hasAltitude = altRaw.filter(Number.isFinite).length >= 0.5 * n;
   const altitude = grid();
@@ -215,6 +239,7 @@ export function buildSeries(activity: Activity): Series {
     hasAltitude,
     speedFromDevice,
     speedLag,
+    speedRatio,
     notes,
   };
 }
@@ -332,6 +357,8 @@ export function quantile(values: ArrayLike<number>, q: number): number {
   return v[lo] + (pos - lo) * (v[hi] - v[lo]);
 }
 
+/** Speed vs distance disagreement (fraction) above which the file gets a visible note. */
+const SPEED_MISMATCH = 0.03;
 const MIN_LAG_TO_APPLY_S = 0.5;
 const MAX_LAG_S = 4;
 

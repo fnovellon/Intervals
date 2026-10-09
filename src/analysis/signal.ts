@@ -1,6 +1,6 @@
 import { msg, type Msg } from "../i18n";
 import { noiseSigma, otsu, pelt } from "./changepoints";
-import type { DetectOptions, SegmentSpec } from "./model";
+import type { DetectOptions, EdgeStrategy, SegmentSpec } from "./model";
 import { clamp, median, quantile, type Series } from "./timeseries";
 
 export interface SignalDetection {
@@ -92,7 +92,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
 
   // ---- boundary refinement -----------------------------------------------------------
   for (let k = 1; k < runs.length; k++) {
-    const t = refineBoundary(signal, runs[k].start, runs[k - 1].start, runs[k].end, 10, 3, opts.edgeFraction);
+    const t = refineBoundary(signal, runs[k].start, runs[k - 1].start, runs[k].end, 10, 3, opts);
     runs[k - 1].end = t;
     runs[k].start = t;
   }
@@ -187,7 +187,24 @@ export function refineBoundary(
   rightEnd: number,
   window = 10,
   margin = 3,
-  edge = 0.5,
+  edge: EdgeStrategy = DEFAULT_EDGES,
+): number {
+  const t = locateEdge(x, b, leftStart, rightEnd, window, margin, edge);
+  // The pace only changes after the beep: move the edge back by the reaction time (never past a neighbour).
+  const lead = clamp(edge.reactionSec, 0, 5);
+  return lead > 0 ? Math.max(Math.ceil(leftStart) + margin, t - lead) : t;
+}
+
+const DEFAULT_EDGES: EdgeStrategy = { startEffort: 0.5, endEffort: 0.5, reactionSec: 0 };
+
+function locateEdge(
+  x: ArrayLike<number>,
+  b: number,
+  leftStart: number,
+  rightEnd: number,
+  window: number,
+  margin: number,
+  edge: EdgeStrategy,
 ): number {
   const ls = Math.ceil(leftStart);
   const re = Math.floor(rightEnd);
@@ -243,7 +260,8 @@ export function refineBoundary(
     if (denom > 1e-12) frac = clamp(0.5 * (em - ep) / denom, -0.5, 0.5);
   }
   const t50 = cut + frac - HALF_SAMPLE;
-  const q = clamp(edge, 0.05, 0.95);
+  // A rising edge (easy -> hard) is an interval start, a falling one an end.
+  const q = clamp(muR > muL ? edge.startEffort : edge.endEffort, 0.05, 0.95);
   if (Math.abs(q - 0.5) < 0.005) return t50;
 
   // ---- other fractions of the change -------------------------------------------------------------

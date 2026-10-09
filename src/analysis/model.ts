@@ -66,6 +66,9 @@ export interface SegmentSpec {
   snapShift?: number;
 }
 
+/** The part of DetectOptions that decides where an interval's edges are placed. */
+export type EdgeStrategy = Pick<DetectOptions, "startEffort" | "endEffort" | "reactionSec">;
+
 export interface DetectOptions {
   mode: DetectMode;
   /**
@@ -86,15 +89,36 @@ export interface DetectOptions {
    */
   snapLaps: boolean;
   /**
-   * Where on a change of pace an interval starts and ends, as the fraction of
-   * the way between the easy and the hard level (0.5 = half-way, the default).
-   * Lower: intervals start earlier and end later. Higher: only the part close
-   * to full pace counts.
+   * Interval edges, as a share of the full effort (the hard level above the easy one).
+   * An interval STARTS when the effort has risen to `startEffort` and ENDS when it has
+   * fallen to `endEffort`. 0.5 / 0.5 is half-way up and half-way down (the default).
+   * A low start and a high end follow the beeps: from the first sign of acceleration
+   * until just before the pace drops. A high start and end keep only the steady part.
    */
-  edgeFraction: number;
+  startEffort: number;
+  endEffort: number;
+  /**
+   * Seconds between the beep and the athlete's reaction. Both edges are moved this much
+   * earlier, because the pace only changes after the beep.
+   */
+  reactionSec: number;
   /** Override the work/rest speed threshold (m/s). Auto when undefined. */
   thresholdSpeed?: number;
 }
+
+/**
+ * Where intervals start and end.
+ * - beep: from the first clear sign of acceleration to the moment the pace begins to drop, moved back by a
+ *   typical reaction time. On simulated sessions with a known beep it lands 0.3-1.1 s from the beep on
+ *   average (2-4.7 s for "half"), robustly across GPS noise, device smoothing and slow ramps.
+ * - half: the middle of each change of pace.
+ * - plateau: only the steady part (cleanest pace, but reps come out ~5 s / 7 % short).
+ */
+export const EDGE_PRESETS = {
+  beep: { startEffort: 0.2, endEffort: 0.8, reactionSec: 0.5 },
+  half: { startEffort: 0.5, endEffort: 0.5, reactionSec: 0 },
+  plateau: { startEffort: 0.9, endEffort: 0.9, reactionSec: 0 },
+} as const satisfies Record<string, EdgeStrategy>;
 
 export const DEFAULT_OPTIONS: DetectOptions = {
   mode: "auto",
@@ -103,7 +127,7 @@ export const DEFAULT_OPTIONS: DetectOptions = {
   minWorkSec: 10,
   minRestSec: 6,
   snapLaps: true,
-  edgeFraction: 0.5,
+  ...EDGE_PRESETS.beep,
 };
 
 /** What a rep was prescribed as: a distance (metres) or a duration (seconds). */

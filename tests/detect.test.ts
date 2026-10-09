@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseFit } from "../src/fit/parse";
 import { analyseActivity, detect } from "../src/analysis/detect";
+import { EDGE_PRESETS } from "../src/analysis/model";
 import { buildSeries } from "../src/analysis/timeseries";
 import { encodeFit, synthesize, WORKOUTS } from "../src/sample/synth";
 import { noteText, score } from "./helpers";
@@ -177,8 +178,9 @@ describe("lap detection", () => {
   it("snaps jittery manual laps onto the real pace changes", () => {
     const sy = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "manual", lapJitter: 4 });
     const series = buildSeries(sy.activity);
-    const raw = detect(sy.activity, series, { mode: "laps", snapLaps: false });
-    const snapped = detect(sy.activity, series, { mode: "laps", snapLaps: true });
+    // the truth here is the physical half-way point of each change, so measure against that strategy
+    const raw = detect(sy.activity, series, { mode: "laps", snapLaps: false, ...EDGE_PRESETS.half });
+    const snapped = detect(sy.activity, series, { mode: "laps", snapLaps: true, ...EDGE_PRESETS.half });
     const err = (d: typeof raw) => {
       const s = score(sy.truth, d);
       return s.matched.reduce((a, m) => a + Math.abs(m.startErr) + Math.abs(m.endErr), 0) / (2 * s.matched.length);
@@ -233,6 +235,45 @@ describe("summary", () => {
     expect(sum.workRestRatio).toBeGreaterThan(0.5);
     expect(sum.avgWorkHr).toBeGreaterThan(150);
     expect(sum.avgHrRecovery).toBeGreaterThan(5);
+  });
+});
+
+describe("speed vs distance consistency", () => {
+  const keys = (d: { notes: { key: string }[] }) => d.notes.map((n) => n.key);
+
+  it("is silent when the watch's speed and distance agree", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 4, lapMode: "none" });
+    const { series, detection } = analyseActivity(activity, { mode: "signal" });
+    expect(Math.abs(series.speedRatio - 1)).toBeLessThan(0.02);
+    expect(keys(detection).filter((k) => k.startsWith("note.speed"))).toEqual([]);
+  });
+
+  it("explains a table/chart gap when the recorded speed reads 10 % low", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 4, lapMode: "none" });
+    const honest = analyseActivity(activity, { mode: "signal" }).detection;
+    activity.records.forEach((r) => {
+      if (r.speed !== undefined) r.speed *= 0.9;
+    });
+    const { series, detection } = analyseActivity(activity, { mode: "signal" });
+    expect(series.speedRatio).toBeCloseTo(0.9, 1);
+    const note = detection.notes.find((n) => n.key === "note.speedLower");
+    expect(note, "a note must explain it").toBeDefined();
+    expect(Number(note!.params!.pct)).toBeGreaterThan(8);
+    expect(Number(note!.params!.pct)).toBeLessThan(12);
+    // The table keeps using distance / time, so the pace in it does not move with the bad speed channel.
+    expect(detection.reps[0].avgSpeed).toBeCloseTo(honest.reps[0].avgSpeed, 0);
+    // ...which is why it now reads faster than the average of the plotted speed
+    let sum = 0, n = 0;
+    for (let i = Math.ceil(detection.reps[0].start); i < Math.ceil(detection.reps[0].end); i++) { sum += series.speed[i]; n++; }
+    expect(detection.reps[0].avgSpeed / (sum / n)).toBeGreaterThan(1.07);
+  });
+
+  it("says 'higher' when the speed reads high", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 4, lapMode: "none" });
+    activity.records.forEach((r) => {
+      if (r.speed !== undefined) r.speed *= 1.08;
+    });
+    expect(keys(analyseActivity(activity, { mode: "signal" }).detection)).toContain("note.speedHigher");
   });
 });
 
