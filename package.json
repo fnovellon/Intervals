@@ -1,8 +1,9 @@
 {
   "name": "intervals",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "Browser-only analyser for Garmin FIT interval workouts",
+  "repository": "github:fnovellon/Intervals",
   "type": "module",
   "scripts": {
     "dev": "vite",

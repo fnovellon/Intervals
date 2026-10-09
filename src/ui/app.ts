@@ -1,7 +1,7 @@
 import { detect, rebuild } from "../analysis/detect";
-import { structureText } from "../analysis/summary";
+import { structureParts } from "../analysis/summary";
 import { AppError, getLocale, LOCALES, msg, nf, onLocaleChange, pct, renderMsg, setLocale, t, tn, type Key, type Locale, type Msg } from "../i18n";
-import type { DetectMode, DetectOptions, Detection, PaceBasis, Segment, SegmentKind, SegmentSpec, SignalKind } from "../analysis/model";
+import type { DetectMode, DetectOptions, Detection, PaceBasis, Segment, SegmentKind, SegmentSpec, SignalKind, StartFrom } from "../analysis/model";
 import { DEFAULT_OPTIONS, EDGE_PRESETS } from "../analysis/model";
 import { buildSeries, type Series } from "../analysis/timeseries";
 import { parseFit } from "../fit/parse";
@@ -23,6 +23,9 @@ import {
   type Units,
 } from "./format";
 import { segmentsToCsv } from "./csv";
+import { parseChangelog } from "../changelog";
+import changelogSource from "../../CHANGELOG.md?raw";
+import { APP_VERSION } from "../version";
 
 interface State {
   activity?: Activity;
@@ -43,6 +46,8 @@ interface State {
   demoId?: string;
   /** The next click on the chart moves this edge of this segment. */
   placing: { id: number; edge: "start" | "end" } | null;
+  /** Whether the settings panel is expanded (a per-viewer convenience, remembered). */
+  settingsOpen: boolean;
 }
 
 const DEMOS: Array<{
@@ -60,6 +65,27 @@ const DEMOS: Array<{
   { id: "12x200", workout: "12x200", lapMode: "none" },
 ];
 
+let newsOpen = false;
+
+/** `**bold**` and `code` in a changelog line, as real elements (never as HTML). */
+function inline(text: string): Array<string | HTMLElement> {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/).filter(Boolean).map((part) =>
+    part.startsWith("**") ? h("strong", {}, part.slice(2, -2)) : part.startsWith("`") ? h("code", {}, part.slice(1, -1)) : part,
+  );
+}
+
+/** CHANGELOG.md, shipped inside the page so it works offline and always matches the running version. */
+function changelogView(): HTMLElement {
+  const box = h("div", { class: "changelog" });
+  for (const r of parseChangelog(changelogSource)) {
+    box.append(h("h3", {}, r.date ? `${r.version} · ${r.date}` : r.version));
+    for (const s of r.sections) {
+      box.append(h("h4", {}, s.title), h("ul", {}, ...s.items.map((item) => h("li", {}, ...inline(item)))));
+    }
+  }
+  return box;
+}
+
 export function mountApp(root: HTMLElement) {
   const state: State = {
     isDemo: false,
@@ -72,6 +98,7 @@ export function mountApp(root: HTMLElement) {
     edited: false,
     loading: false,
     placing: null,
+    settingsOpen: readSettingsOpen(),
   };
 
   // ------------------------------------------------------------------ static shell
@@ -104,7 +131,7 @@ export function mountApp(root: HTMLElement) {
       );
     }
     headerHost.append(
-      h("h1", {}, t("app.title")),
+      h("h1", {}, t("app.title"), h("span", { class: "version", title: t("app.version", { version: APP_VERSION }) }, `v${APP_VERSION}`)),
       h("span", { class: "sub" }, t("app.tagline")),
       h("span", { class: "grow" }),
       h("span", { class: "privacy", title: t("app.privacyTitle") }, `🔒 ${t("app.privacy")}`),
@@ -112,7 +139,10 @@ export function mountApp(root: HTMLElement) {
       themeBtn,
     );
     clear(footerHost);
-    footerHost.append(t("app.footer"));
+    const news = h("details", { class: "whatsnew" }, h("summary", {}, `${t("app.version", { version: APP_VERSION })} · ${t("app.whatsNew")}`), changelogView());
+    news.open = newsOpen;
+    news.addEventListener("toggle", () => (newsOpen = news.open));
+    footerHost.append(h("p", {}, t("app.footer")), news);
   }
 
   /** Everything that contains words: runs at start and whenever the language changes. */
@@ -172,6 +202,7 @@ export function mountApp(root: HTMLElement) {
       state.zoom = z;
       renderResults();
     },
+    onHover: (id) => markHover(id === null ? [] : [id]),
     onMoveBoundary: (index, time) => {
       const d = state.detection!;
       const specs = specsOf(d);
@@ -180,6 +211,31 @@ export function mountApp(root: HTMLElement) {
       applyEdit(specs);
     },
   });
+  /**
+   * Hovering a rep in the session description or a row of the table lights up that interval on the chart, and
+   * hovering the chart lights up the matching row and rep. Only classes change: nothing is re-rendered.
+   */
+  function markHover(ids: number[]) {
+    const set = new Set(ids);
+    resultsArea.querySelectorAll<HTMLElement>("[data-seg]").forEach((el) => el.classList.toggle("hl", set.has(Number(el.dataset.seg))));
+    resultsArea.querySelectorAll<HTMLElement>("[data-segs]").forEach((el) => el.classList.toggle("hl", el.dataset.segs!.split(",").some((x) => set.has(Number(x)))));
+  }
+  /** Wire pointer and keyboard focus of an element to the highlight of some segments. */
+  function hoverable(el: HTMLElement, ids: number[]) {
+    const on = () => {
+      chart.setHighlight(ids);
+      markHover(ids);
+    };
+    const off = () => {
+      chart.setHighlight([]);
+      markHover([]);
+    };
+    el.addEventListener("pointerenter", on);
+    el.addEventListener("pointerleave", off);
+    el.addEventListener("focus", on);
+    el.addEventListener("blur", off);
+  }
+
   let resizeRaf = 0;
   new ResizeObserver(() => {
     cancelAnimationFrame(resizeRaf);
@@ -412,6 +468,9 @@ export function mountApp(root: HTMLElement) {
       return wrap;
     };
 
+    /** The plain-words explanation shown under every setting. */
+    const desc = (key: Key) => h("p", { class: "desc" }, t(key));
+
     const sensLabel = h("span", { class: "val" }, nf(state.options.sensitivity, 1));
     const sens = h("input", { type: "range", min: "0.5", max: "2", step: "0.1", value: String(state.options.sensitivity), "aria-label": t("tb.sensitivity") });
     let timer: number | undefined;
@@ -428,23 +487,23 @@ export function mountApp(root: HTMLElement) {
       const e = EDGE_PRESETS[k];
       return e.startEffort === state.options.startEffort && e.endEffort === state.options.endEffort && e.reactionSec === state.options.reactionSec;
     }) ?? "custom";
-    const edgeSlider = (labelKey: Key, titleKey: Key, key: "startEffort" | "endEffort") => {
+    const edgeSlider = (labelKey: Key, descKey: Key, key: "startEffort" | "endEffort") => {
       const out = h("span", { class: "val" }, pct(state.options[key] * 100, 0));
-      const input = h("input", { type: "range", min: "0.05", max: "0.95", step: "0.05", value: String(state.options[key]), "aria-label": t(labelKey), title: t(titleKey) });
+      const input = h("input", { type: "range", min: "0.05", max: "0.95", step: "0.05", value: String(state.options[key]), "aria-label": t(labelKey) });
       input.addEventListener("input", () => {
         state.options[key] = Number(input.value);
         out.textContent = pct(state.options[key] * 100, 0);
         edgesChanged();
       });
-      const row = h("div", { class: "field", title: t(titleKey) }, h("span", { class: "lbl" }, t(labelKey)), h("span", { class: "row" }, input, out));
+      const row = h("div", { class: "field" }, h("span", { class: "lbl" }, t(labelKey)), h("span", { class: "row" }, input, out), desc(descKey));
       return { row, input, out };
     };
-    const startCtl = edgeSlider("tb.startAt", "tb.startTitle", "startEffort");
-    const endCtl = edgeSlider("tb.endAt", "tb.endTitle", "endEffort");
+    const startCtl = edgeSlider("tb.startAt", "tb.startAtDesc", "startEffort");
+    const endCtl = edgeSlider("tb.endAt", "tb.endAtDesc", "endEffort");
     const reaction = h("input", { type: "number", min: "0", max: "3", step: "0.1", value: String(state.options.reactionSec), id: "f-reaction", "aria-label": t("tb.reaction") });
     const preset = h("select", { "aria-label": t("tb.preset"), id: "f-preset" });
     for (const k of [...PRESETS, "custom"] as const) preset.append(h("option", { value: k }, t(`tb.preset.${k}` as Key)));
-    const summary = h("summary", { title: t("tb.edgesTitle") });
+    const summary = h("summary");
     const refreshEdges = () => {
       const k = matchPreset();
       preset.value = k;
@@ -477,15 +536,16 @@ export function mountApp(root: HTMLElement) {
       h(
         "div",
         { class: "edges-body" },
-        h("div", { class: "field", title: t("tb.presetTitle") }, h("label", { for: "f-preset" }, t("tb.preset")), preset),
+        h("p", { class: "desc wide" }, t("tb.edgesDesc")),
+        h("div", { class: "field" }, h("label", { for: "f-preset" }, t("tb.preset")), preset, desc("tb.presetDesc")),
         startCtl.row,
         endCtl.row,
-        h("div", { class: "field", title: t("tb.reactionTitle") }, h("label", { for: "f-reaction" }, t("tb.reaction")), reaction),
+        h("div", { class: "field" }, h("label", { for: "f-reaction" }, t("tb.reaction")), reaction, desc("tb.reactionDesc")),
       ),
     );
     refreshEdges();
 
-    const numberField = (label: string, key: "minWorkSec" | "minRestSec", min: number, max: number, title: string) => {
+    const numberField = (label: string, key: "minWorkSec" | "minRestSec", min: number, max: number, descKey: Key) => {
       const input = h("input", { type: "number", min: String(min), max: String(max), step: "1", value: String(state.options[key]), id: `f-${key}` });
       input.addEventListener("change", () => {
         const v = Math.min(max, Math.max(min, Number(input.value) || min));
@@ -493,7 +553,7 @@ export function mountApp(root: HTMLElement) {
         state.options[key] = v;
         recompute();
       });
-      return h("div", { class: "field", title }, h("label", { for: `f-${key}` }, label), input);
+      return h("div", { class: "field" }, h("label", { for: `f-${key}` }, label), input, desc(descKey));
     };
 
     const thr = h("input", { type: "text", id: "f-thr", placeholder: t("tb.autoThreshold"), size: "6", inputmode: "numeric", "aria-label": t("tb.threshold", { unit: sd.unit }) });
@@ -533,20 +593,31 @@ export function mountApp(root: HTMLElement) {
     const bar = h(
       "div",
       { class: "toolbar", role: "region", "aria-label": t("tb.aria") },
-      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.source")), segmented<DetectMode>([["auto", t("tb.auto")], ["laps", t("tb.laps")], ["signal", t("tb.signal")]], () => state.options.mode, (v) => { state.options.mode = v; recompute(); })),
-      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.paceType")), segmented<SignalKind>([["auto", t("tb.auto")], ["speed", sd.isPace ? t("tb.pace") : t("tb.speed")], ["gap", t("tb.gap")]], () => state.options.signal, (v) => { state.options.signal = v; recompute(); })),
+      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.source")), segmented<DetectMode>([["auto", t("tb.auto")], ["laps", t("tb.laps")], ["signal", t("tb.signal")]], () => state.options.mode, (v) => { state.options.mode = v; recompute(); }), desc("tb.sourceDesc")),
+      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { class: "row" }, sens, sensLabel), desc("tb.sensitivityDesc")),
+      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.startFrom")), segmented<StartFrom>([["auto", t("tb.start.auto")], ["standing", t("tb.start.standing")], ["jogging", t("tb.start.jogging")]], () => state.options.startFrom, (v) => { state.options.startFrom = v; recompute(); }), desc("tb.startFromDesc")),
+      numberField(t("tb.minRep"), "minWorkSec", 3, 600, "tb.minRepDesc"),
+      numberField(t("tb.minRest"), "minRestSec", 2, 600, "tb.minRestDesc"),
+      h("div", { class: "field" }, h("label", { for: "f-thr" }, t("tb.threshold", { unit: sd.unit })), h("span", { class: "row" }, thr, thrNote), desc("tb.thresholdDesc")),
+      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.paceType")), segmented<SignalKind>([["auto", t("tb.auto")], ["speed", sd.isPace ? t("tb.pace") : t("tb.speed")], ["gap", t("tb.gap")]], () => state.options.signal, (v) => { state.options.signal = v; recompute(); }), desc("tb.paceTypeDesc")),
       ...(state.series?.speedFromDevice
-        ? [h("div", { class: "field", title: t("tb.basisTitle") }, h("span", { class: "lbl" }, t("tb.basis")), segmented<PaceBasis>([["distance", t("tb.basisDist")], ["device", t("tb.basisDev")]], () => state.options.paceBasis, setPaceBasis))]
+        ? [h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.basis")), segmented<PaceBasis>([["distance", t("tb.basisDist")], ["device", t("tb.basisDev")]], () => state.options.paceBasis, setPaceBasis), desc("tb.basisDesc"))]
         : []),
-      h("div", { class: "field", title: t("tb.sensitivityTitle") }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, sens, sensLabel)),
-      numberField(t("tb.minRep"), "minWorkSec", 3, 600, t("tb.minRepTitle")),
-      numberField(t("tb.minRest"), "minRestSec", 2, 600, t("tb.minRestTitle")),
-      h("div", { class: "field", title: t("tb.thresholdTitle") }, h("label", { for: "f-thr" }, t("tb.threshold", { unit: sd.unit })), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, thr, thrNote)),
-      h("div", { class: "field check" }, snap, h("label", { for: "f-snap", title: t("tb.snapTitle") }, t("tb.snap"))),
-      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.units")), segmented<Units>([["metric", t("tb.km")], ["imperial", t("tb.mi")]], () => state.units, (v) => { state.units = v; renderToolbarUnits(); renderResults(); })),
+      h("div", { class: "field" }, h("div", { class: "checkrow" }, snap, h("label", { for: "f-snap" }, t("tb.snap"))), desc("tb.snapDesc")),
+      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.units")), segmented<Units>([["metric", t("tb.km")], ["imperial", t("tb.mi")]], () => state.units, (v) => { state.units = v; renderToolbarUnits(); renderResults(); }), desc("tb.unitsDesc")),
     );
     bar.append(edgesGroup);
-    toolbarHost.append(head, bar);
+    const settings = h("details", { class: "settings" }, h("summary", {}, t("tb.title")), bar);
+    settings.open = state.settingsOpen;
+    settings.addEventListener("toggle", () => {
+      state.settingsOpen = settings.open;
+      try {
+        localStorage.setItem("settingsOpen", settings.open ? "1" : "0");
+      } catch {
+        /* private mode: the panel simply starts in its default state next time */
+      }
+    });
+    toolbarHost.append(head, settings);
     syncThreshold();
   }
   let toolbarSync: () => void = () => {};
@@ -562,6 +633,7 @@ export function mountApp(root: HTMLElement) {
     const series = state.series;
     const a = state.activity;
     if (!d || !series || !a) return;
+    chart.setHighlight([]);
     toolbarSync();
     const sd = speedDisplay(a.sport, state.units);
     const sum = d.summary;
@@ -583,7 +655,17 @@ export function mountApp(root: HTMLElement) {
           "section",
           { class: "hero", "aria-label": t("hero.kicker") },
           h("div", { class: "kicker" }, t("hero.kicker")),
-          h("div", { class: "big" }, structureText(sum, getLocale())),
+          h(
+            "div",
+            { class: "big" },
+            ...structureParts(sum, getLocale()).map((part) => {
+              if (!part.reps) return part.text;
+              const ids = part.reps.map((i) => d.reps[i].id);
+              const el = h("span", { class: "rep-token", tabindex: "0", "data-segs": ids.join(",") }, part.text);
+              hoverable(el, ids);
+              return el;
+            }),
+          ),
           h("div", { class: "sub" }, t("hero.sub", { count: sum.repCount, dist: fmtDistance(sum.totalWorkDistance, state.units), time: duration(sum.totalWorkTime) })),
         ),
         tilesFor(d, sd),
@@ -812,7 +894,7 @@ export function mountApp(root: HTMLElement) {
     const thead = h("thead", {}, h("tr", {}, ...cols.map((c) => h("th", { class: c.key === "kind" ? "l" : "", scope: "col", title: headerTitle(c.key) }, c.label))));
     const tbody = h("tbody");
     for (const sg of rows) {
-      const tr = h("tr", { class: `${state.selected === sg.id ? "sel" : ""} ${sg.kind === "work" ? "" : "dim"}`, tabindex: "0", on: { click: () => { state.selected = state.selected === sg.id ? null : sg.id; renderResults(); } } });
+      const tr = h("tr", { class: `${state.selected === sg.id ? "sel" : ""} ${sg.kind === "work" ? "" : "dim"}`, tabindex: "0", "data-seg": String(sg.id), on: { click: () => { state.selected = state.selected === sg.id ? null : sg.id; renderResults(); } } });
       tr.addEventListener("keydown", (e) => {
         if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
           e.preventDefault();
@@ -839,6 +921,7 @@ export function mountApp(root: HTMLElement) {
           tr.append(td);
         }
       }
+      hoverable(tr, [sg.id]);
       tbody.append(tr);
     }
 
@@ -957,3 +1040,13 @@ function cycleTheme() {
   }
 }
 
+/** Expanded by default on a wide screen, collapsed on a phone, unless the viewer chose otherwise. */
+function readSettingsOpen(): boolean {
+  try {
+    const saved = localStorage.getItem("settingsOpen");
+    if (saved === "1" || saved === "0") return saved === "1";
+  } catch {
+    /* storage blocked */
+  }
+  return window.innerWidth >= 720;
+}

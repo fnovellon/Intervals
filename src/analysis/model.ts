@@ -11,6 +11,13 @@ export type SignalKind = "auto" | "speed" | "gap";
  * They agree unless the watch's speed and distance come from different sensors.
  */
 export type PaceBasis = "distance" | "device";
+/**
+ * How the athlete leaves for a hard effort.
+ * - "standing": from a stop or a walk. Any slow shuffling before the effort belongs to the start.
+ * - "jogging": already jogging. The effort starts when the pace picks up from the jog.
+ * - "auto": jogging when the pace was steady at a real jogging speed just before, standing otherwise.
+ */
+export type StartFrom = "auto" | "standing" | "jogging";
 
 export interface Segment {
   id: number;
@@ -112,6 +119,8 @@ export interface DetectOptions {
    * earlier, because the pace only changes after the beep.
    */
   reactionSec: number;
+  /** How efforts are started: from a stop, from a jog, or decided from the data. */
+  startFrom: StartFrom;
   /** Which speed the reported paces come from. Detection itself always uses the recorded speed. */
   paceBasis: PaceBasis;
   /** Override the work/rest speed threshold (m/s). Auto when undefined. */
@@ -139,6 +148,7 @@ export const DEFAULT_OPTIONS: DetectOptions = {
   minWorkSec: 10,
   minRestSec: 6,
   snapLaps: true,
+  startFrom: "auto",
   paceBasis: "distance",
   ...EDGE_PRESETS.beep,
 };

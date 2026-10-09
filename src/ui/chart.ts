@@ -3,7 +3,7 @@ import { distanceAt, paceSeries, quantile, type Series } from "../analysis/times
 import { clear, h, s } from "./dom";
 import { getLocale, nf, t } from "../i18n";
 import { structureText } from "../analysis/summary";
-import { distance as fmtDistance, duration, kindLabel, type SpeedDisplay, type Units } from "./format";
+import { distance as fmtDistance, duration, kindLabel, signed, type SpeedDisplay, type Units } from "./format";
 
 export type XMode = "time" | "distance";
 
@@ -29,6 +29,8 @@ export interface ChartHandlers {
   onMoveBoundary(index: number, time: number): void;
   /** The user clicked the chart while placing a boundary. */
   onPlace(time: number): void;
+  /** The segment under the pointer changed (null when the pointer left). */
+  onHover(id: number | null): void;
 }
 
 const M = { left: 60, right: 14, top: 2 };
@@ -69,6 +71,12 @@ export class TimelineChart {
   };
   private panels: Panel[] = [];
   private cross?: SVGGElement;
+  /** Highlight layers: behind the lines (bands) and over the strip (outlines). */
+  private hlBands?: SVGGElement;
+  private hlStrip?: SVGGElement;
+  /** Segments to highlight because the pointer is over them / because the page asks for it. */
+  private pointerSeg: number | null = null;
+  private external: number[] = [];
   /** Boundary whose handle should regain keyboard focus after the next render. */
   private refocus: number | null = null;
 
@@ -209,6 +217,8 @@ export class TimelineChart {
       bands.append(s("rect", { class: cls, x: x0, y: plotTop, width: Math.max(0, x1 - x0), height: plotBottom - plotTop }));
     }
     svg.append(bands);
+    this.hlBands = s("g", { "clip-path": `url(#${clipId})` });
+    svg.append(this.hlBands);
 
     // panels: grid, ticks, titles
     for (const p of panels) {
@@ -319,6 +329,8 @@ export class TimelineChart {
       );
     }
     svg.append(stripG);
+    this.hlStrip = s("g", { "clip-path": `url(#${clipId})` });
+    svg.append(this.hlStrip);
 
     // ---- crosshair + overlay ----------------------------------------------------------------------
     this.cross = s("g", { visibility: "hidden" });
@@ -341,6 +353,7 @@ export class TimelineChart {
     if (this.svg) this.svg.replaceWith(svg);
     else this.el.prepend(svg);
     this.svg = svg;
+    this.drawHighlight();
     if (this.cursor !== null) this.showCursor(this.cursor, null);
     if (this.refocus !== null) {
       const handle = svg.querySelector<SVGGElement>(`.handle[data-index="${this.refocus}"]`);
@@ -582,7 +595,40 @@ export class TimelineChart {
     }
   }
 
+  /** Highlight segments on behalf of the rest of the page (a hovered table row, a hovered rep). */
+  setHighlight(ids: number[]) {
+    this.external = ids;
+    this.drawHighlight();
+  }
+
+  private setPointerSeg(id: number | null) {
+    if (this.pointerSeg === id) return;
+    this.pointerSeg = id;
+    this.drawHighlight();
+    this.handlers.onHover(id);
+  }
+
+  private drawHighlight() {
+    if (!this.hlBands || !this.hlStrip || !this.props || !this.geom) return;
+    clear(this.hlBands);
+    clear(this.hlStrip);
+    const ids = new Set(this.external);
+    if (this.pointerSeg !== null) ids.add(this.pointerSeg);
+    if (!ids.size) return;
+    const { plotL, plotR, plotTop, plotBottom, t0, t1 } = this.geom;
+    for (const sg of this.props.detection.segments) {
+      if (!ids.has(sg.id) || sg.end <= t0 || sg.start >= t1) continue;
+      const x0 = Math.max(plotL, this.pxOfTime(sg.start));
+      const x1 = Math.min(plotR, this.pxOfTime(sg.end));
+      this.hlBands.append(s("rect", { class: "band-hover", x: x0, y: plotTop, width: Math.max(0, x1 - x0), height: plotBottom - plotTop }));
+      const xa = this.pxOfTime(sg.start) + 1;
+      const w = this.pxOfTime(sg.end) - 1 - xa;
+      if (w >= 1) this.hlStrip.append(s("rect", { class: "seg-hover", x: xa - 1, y: M.top - 1, width: w + 2, height: STRIP_H + 2, rx: 5 }));
+    }
+  }
+
   private hideCursor() {
+    this.setPointerSeg(null);
     this.cursor = null;
     if (this.cross) this.cross.setAttribute("visibility", "hidden");
     this.tooltip.hidden = true;
@@ -605,6 +651,7 @@ export class TimelineChart {
 
     const seg = detection.segments.find((sg) => i >= sg.start && i < sg.end) ?? detection.segments[detection.segments.length - 1];
     const repNo = seg.kind === "work" ? detection.reps.findIndex((r) => r.id === seg.id) + 1 : 0;
+    this.setPointerSeg(seg.id);
 
     const rows: Array<{ name: string; value: string; color?: string }> = [];
     for (const p of this.panels) {
@@ -630,18 +677,33 @@ export class TimelineChart {
 
     const head =
       seg.kind === "work" ? t("tt.rep", { n: repNo }) : kindLabel(seg.kind);
+    // What the whole interval did, below what is happening at the pointer.
+    const stats: Array<{ name: string; value: string }> = [
+      { name: t("tt.duration"), value: duration(seg.duration, seg.duration < 120 ? 1 : 0) },
+      { name: t("tt.distance"), value: fmtDistance(seg.distance, units) },
+      { name: t(display.isPace ? "tt.avgPace" : "tt.avgSpeed"), value: seg.avgSpeed > 0.3 ? display.formatWithUnit(seg.avgSpeed) : "–" },
+    ];
+    if (seg.kind === "work" && seg.maxSpeed > 0.3) stats.push({ name: t("tt.best5"), value: display.formatWithUnit(seg.maxSpeed) });
+    if (seg.avgHr !== undefined) {
+      stats.push({ name: t("tt.avgHr"), value: `${Math.round(seg.avgHr)}${seg.maxHr ? ` · ${t("tt.max")} ${Math.round(seg.maxHr)}` : ""} ${t("unit.bpm")}` });
+    }
+    if (seg.avgCadence !== undefined) stats.push({ name: t("tt.avgCad"), value: `${Math.round(seg.avgCadence)} ${t("unit.spm")}` });
+    if (seg.kind === "work" && seg.fadePct !== undefined) stats.push({ name: t("tt.fade"), value: `${signed(seg.fadePct, 1)}\u00A0%` });
+    const row = (name: string, value: string, color?: string) =>
+      h(
+        "div",
+        { class: "tt-row" },
+        h("span", { class: "key", style: { borderColor: color ?? "transparent" } }),
+        h("span", { class: "n" }, name),
+        h("span", { class: "v" }, value),
+      );
     this.tooltip.replaceChildren(
       h("div", { class: "tt-head" }, head),
       h("div", { class: "tt-sub" }, `${duration(i)} · ${fmtDistance(series.dist[i], units)}`),
-      ...rows.map((r) =>
-        h(
-          "div",
-          { class: "tt-row" },
-          r.color ? h("span", { class: "key", style: { borderColor: r.color } }) : h("span", { class: "key", style: { borderColor: "transparent" } }),
-          h("span", { class: "n" }, r.name),
-          h("span", { class: "v" }, r.value),
-        ),
-      ),
+      ...rows.map((r) => row(r.name, r.value, r.color)),
+      h("div", { class: "tt-sep" }),
+      h("div", { class: "tt-cap" }, t("tt.whole")),
+      ...stats.map((r) => row(r.name, r.value)),
     );
     this.tooltip.hidden = false;
     const y = pointer ? pointer.clientY - this.el.getBoundingClientRect().top : plotTop + 40;

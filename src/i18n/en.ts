@@ -14,6 +14,8 @@ export const en = {
   "app.theme": "Theme",
   "app.themeAria": "Switch between light and dark theme",
   "app.langAria": "Language",
+  "app.version": "Version {version}",
+  "app.whatsNew": "What’s new",
   "app.footer":
     "Boundaries are the half-way point of each change of pace, found by change-point detection on the 1 Hz speed signal (or taken from the watch's laps). Distances come from the recorded distance curve at those boundaries.",
 
@@ -82,6 +84,7 @@ export const en = {
 
   // ---- toolbar -----------------------------------------------------------------------
   "tb.aria": "Detection settings",
+  "tb.title": "Detection settings",
   "tb.source": "Source",
   "tb.auto": "Auto",
   "tb.laps": "Laps",
@@ -91,42 +94,60 @@ export const en = {
   "tb.speed": "Speed",
   "tb.gap": "Grade-adjusted",
   "tb.sensitivity": "Sensitivity",
-  "tb.sensitivityTitle":
-    "How small a change of pace counts as the start or end of an interval. Higher finds shorter, subtler changes; lower ignores small variations.",
   "tb.edges": "Interval edges",
-  "tb.edgesTitle": "How the start and the end of each interval are placed on the change of pace.",
   "tb.preset": "Strategy",
   "tb.preset.beep": "Beep to beep",
   "tb.preset.half": "Half-way",
   "tb.preset.plateau": "Steady pace only",
   "tb.preset.custom": "Custom",
-  "tb.presetTitle":
-    "Beep to beep: from the first clear acceleration until just before the pace drops, as the watch's beep and the whistle define it. Half-way: the middle of each change of pace. Steady pace only: just the plateau (cleanest pace, but shorter reps).",
   "tb.startAt": "Start when effort reaches",
-  "tb.startTitle": "Share of the full effort the pace must reach for the interval to start. Lower: it starts earlier, at the first sign of acceleration.",
   "tb.endAt": "End when effort falls to",
-  "tb.endTitle": "Share of the full effort the pace drops to for the interval to end. Higher: it ends earlier, right when the pace begins to drop.",
   "tb.reaction": "Reaction time (s)",
-  "tb.reactionTitle": "Delay between the beep or whistle and the pace changing. Both edges are moved this much earlier.",
   "tb.edgeSummary": "start {start} · end {end} · reaction {reaction} s",
-  "tb.minRepTitle": "Shortest hard effort that counts as an interval, in seconds.",
-  "tb.minRestTitle": "Shortest recovery that separates two intervals, in seconds.",
-  "tb.thresholdTitle": "The pace that separates hard from easy. Leave empty for automatic.",
   "tb.minRep": "Min rep (s)",
   "tb.minRest": "Min rest (s)",
   "tb.threshold": "Work/rest threshold ({unit})",
   "tb.snap": "Snap laps to pace",
-  "tb.snapTitle":
-    "Move boundaries of laps you pressed by hand to the nearest real change of pace. Structured-workout laps are never moved.",
   "tb.basis": "Pace from",
   "tb.basisDist": "Distance ÷ time",
   "tb.basisDev": "Watch speed",
-  "tb.basisTitle":
-    "Where the paces come from. Distance ÷ time: distance covered over time, like the lap table in Garmin Connect. Watch speed: the speed the watch recorded second by second, like its screen while you run. That speed is smoothed over several seconds, so on short reps it falls short of your real pace.",
   "tb.units": "Units",
   "tb.km": "km",
   "tb.mi": "mi",
   "tb.autoThreshold": "auto",
+  "tb.sourceDesc":
+    "Where the intervals come from: the laps your watch recorded, or the changes in your speed. “Auto” picks for you.",
+  "tb.paceTypeDesc":
+    "Plain pace, or “grade-adjusted”, which corrects for climbs and descents. “Auto” only corrects on hilly routes.",
+  "tb.basisDesc":
+    "Where the paces shown come from. “Distance ÷ time” is the distance covered divided by the time, as in Garmin Connect. “Watch speed” is what your watch displayed while you ran: it is smoothed, so it lags on short efforts.",
+  "tb.sensitivityDesc":
+    "Higher: the app notices smaller changes of pace, and may see efforts that are not there. Lower: it only keeps the big changes.",
+  "tb.startFrom": "Effort start",
+  "tb.start.auto": "Auto",
+  "tb.start.standing": "From a stop",
+  "tb.start.jogging": "Jogging",
+  "tb.startFromDesc":
+    "How you set off for an effort. “From a stop”: the effort starts as soon as you move. “Jogging”: it starts when you speed up, not when the jog begins. “Auto” checks whether you were jogging just before.",
+  "tb.minRepDesc":
+    "Shortest fast stretch, in seconds, that counts as an effort. Ignores small accelerations.",
+  "tb.minRestDesc":
+    "Shortest recovery, in seconds, that separates two efforts. Stops one effort being cut in two by a brief slowdown.",
+  "tb.thresholdDesc":
+    "The pace that separates “fast” from “slow”. Leave empty and the app finds it by itself.",
+  "tb.snapDesc":
+    "When you press the lap button you are rarely right on the change of pace. The app moves each lap onto the real change.",
+  "tb.unitsDesc": "Kilometres or miles.",
+  "tb.edgesDesc":
+    "Where each effort starts and ends on a change of pace. The defaults suit most sessions.",
+  "tb.presetDesc":
+    "“Beep to beep”: the effort starts as soon as you speed up and ends just before you slow down, like the watch's beep or a whistle. “Half-way”: the middle of the change of pace. “Steady pace only”: just the part at constant speed (shorter efforts, but a cleaner pace).",
+  "tb.startAtDesc":
+    "How far into the speed-up the effort starts. Low: at the first faster steps. High: when you are nearly at full speed.",
+  "tb.endAtDesc":
+    "How far into the slow-down the effort stops. High: as soon as you start to slow. Low: when you have nearly slowed right down.",
+  "tb.reactionDesc":
+    "How long you take to react to the beep (about half a second). The start and the end are moved this much earlier.",
 
   // ---- results ------------------------------------------------------------------------
   "res.fromLaps": "Detected from device laps. {reason}",
@@ -205,6 +226,16 @@ export const en = {
   "tt.ele": "Elevation",
   "tt.cad": "Cadence",
   "tt.grade": "Grade",
+  "tt.whole": "Whole interval",
+  "tt.duration": "Duration",
+  "tt.distance": "Distance",
+  "tt.avgPace": "Average pace",
+  "tt.avgSpeed": "Average speed",
+  "tt.best5": "Best 5 s",
+  "tt.avgHr": "Avg HR",
+  "tt.max": "max",
+  "tt.avgCad": "Avg cadence",
+  "tt.fade": "Fade",
   "unit.spm": "spm",
   "unit.bpm": "bpm",
 

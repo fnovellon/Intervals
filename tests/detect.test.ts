@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { parseFit } from "../src/fit/parse";
 import { analyseActivity, detect, rebuild } from "../src/analysis/detect";
 import { integrateSpeed } from "../src/analysis/measure";
-import { EDGE_PRESETS } from "../src/analysis/model";
+import { DEFAULT_OPTIONS, EDGE_PRESETS, type StartFrom } from "../src/analysis/model";
 import { buildSeries } from "../src/analysis/timeseries";
-import { encodeFit, synthesize, WORKOUTS } from "../src/sample/synth";
+import { encodeFit, synthesize, WORKOUTS, type StepSpec } from "../src/sample/synth";
 import { noteText, score } from "./helpers";
 
 describe("FIT round trip", () => {
@@ -351,6 +351,64 @@ describe("pace basis", () => {
     const mid = Math.round((rep.start + rep.end) / 2);
     expect(series.distSpeed[mid]).toBeGreaterThan(3.5);
     for (let k = 0; k < series.n; k++) if (series.paused[k]) expect(series.distSpeed[k]).toBe(0);
+  });
+});
+
+describe("start from a stop or from a jog", () => {
+  // Three efforts, each preceded by standing, then (optionally) a jog at 6:40/km.
+  const session = (jogSeconds: number): StepSpec[] => [
+    { kind: "warmup", distance: 1200, pace: 345 },
+    ...[0, 1, 2].flatMap((): StepSpec[] => [
+      { kind: "rest", duration: 50, pace: 0 },
+      ...(jogSeconds ? [{ kind: "rest", duration: jogSeconds, pace: 400 } as StepSpec] : []),
+      { kind: "work", distance: 300, pace: 210 },
+    ]),
+    { kind: "cooldown", distance: 800, pace: 360 },
+  ];
+  const startErrors = (jog: number | boolean, startFrom: StartFrom, seed = 3) => {
+    const { activity, truth } = synthesize({ steps: session(jog === true ? 14 : jog === false ? 0 : jog), seed, lapMode: "none" });
+    const { detection } = analyseActivity(activity, { mode: "signal", startFrom });
+    const work = truth.filter((x) => x.kind === "work");
+    expect(detection.reps).toHaveLength(3);
+    return detection.reps.map((r, i) => r.start - work[i].start);
+  };
+
+  it("does not take the start of the jog for the start of the effort", () => {
+    for (const jog of [10, 14, 20]) {
+      for (const seed of [1, 2, 3, 4]) {
+        for (const mode of ["auto", "jogging"] as const) {
+          startErrors(jog, mode, seed).forEach((e) => expect(Math.abs(e), `${mode}, ${jog} s jog, seed ${seed}`).toBeLessThan(3.5));
+        }
+      }
+    }
+  });
+
+  it("auto leaves a plain jogging recovery alone (it only helps after a stop)", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 5, lapMode: "none" });
+    const auto = analyseActivity(activity, { mode: "signal", startFrom: "auto" }).detection;
+    const standing = analyseActivity(activity, { mode: "signal", startFrom: "standing" }).detection;
+    auto.reps.forEach((r, i) => expect(Math.abs(r.start - standing.reps[i].start)).toBeLessThan(0.3));
+  });
+
+  it("'from standing' keeps the jog inside the effort, as before", () => {
+    startErrors(true, "standing").forEach((e) => expect(e).toBeLessThan(-10));
+  });
+
+  it("a real start from a stop is the same in every mode", () => {
+    for (const mode of ["auto", "standing", "jogging"] as const) {
+      startErrors(false, mode).forEach((e) => expect(Math.abs(e), mode).toBeLessThan(3.5));
+    }
+  });
+
+  it("only moves effort starts, never the ends", () => {
+    const { activity } = synthesize({ steps: session(14), seed: 3, lapMode: "none" });
+    const a = analyseActivity(activity, { mode: "signal", startFrom: "standing" }).detection;
+    const b = analyseActivity(activity, { mode: "signal", startFrom: "jogging" }).detection;
+    a.reps.forEach((r, i) => expect(b.reps[i].end).toBeCloseTo(r.end, 6));
+  });
+
+  it("is on by default (auto)", () => {
+    expect(DEFAULT_OPTIONS.startFrom).toBe("auto");
   });
 });
 

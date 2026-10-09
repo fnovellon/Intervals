@@ -56,7 +56,8 @@ public, but files you drop on it are still analysed only in the visitor's browse
 | Hills | Grade-adjusted pace (Minetti cost model) is used automatically on hilly routes, so a slow climb is correctly "hard" and the jog down "easy". |
 | Standing rests with auto-pause | A pause is a rest segment with its true duration, not a gap. |
 
-"Source" and "Pace type" can be forced in the settings row, and the work/rest
+Every setting has a short description in plain words right under it, and the panel can be collapsed
+(it remembers its state; it starts collapsed on a phone). "Source" and "Pace type" can be forced, and the work/rest
 threshold, sensitivity and minimum rep / rest length are adjustable. Every
 boundary can be corrected with the mouse or keyboard, and everything recomputes:
 
@@ -68,6 +69,13 @@ boundary can be corrected with the mouse or keyboard, and everything recomputes:
 - **Keyboard**: focus a boundary (Tab) and press ← / → to move it by 0.5 s (Shift 5 s, Alt 0.1 s).
 - Segments can also be re-typed, merged or split. Results export to CSV.
 
+Hovering shows what you are pointing at:
+
+- **On the chart**, the tooltip gives the values at the pointer and, below them, the statistics of the whole interval
+  under it (duration, distance, average pace, best 5 s, heart rate, cadence, drift), and the interval is highlighted.
+- **In the detected session** (the big line at the top) and **in the table**, hovering a rep, a set (`6 × 800 m`) or a
+  row highlights the matching interval(s) on the chart, and hovering the chart highlights the matching row and rep.
+
 ## Detection settings
 
 | Setting | What it does |
@@ -75,6 +83,7 @@ boundary can be corrected with the mouse or keyboard, and everything recomputes:
 | **Source** | Device laps, the pace signal, or Auto (laps when they carry real structure). |
 | **Pace type** | Plain pace, grade-adjusted pace (hills), or Auto (grade-adjusted on hilly routes). |
 | **Pace from** | *Distance ÷ time* (default, like the lap table in Garmin Connect) or *Watch speed* (the speed channel the watch recorded, like its screen while you run). Only shown when the file has a speed channel. Changing it only changes the numbers, not the intervals found. |
+| **Effort start** | How you set off for an effort. *From a stop*: the effort starts as soon as you move (a jog before it counts as part of the start). *Jogging*: it starts where the pace picks up from the jog. *Auto* (default): jogging when you were stopped or crawling, then held a steady jog for several seconds just before the effort, from a stop otherwise (so an ordinary jogging recovery, or a slow build-up, is left as it is). Pick *Jogging* when the start still lands too early. Only starts are affected. |
 | **Sensitivity** | How small a change of pace counts as the start/end of an interval. Higher finds shorter, subtler changes. |
 | **Interval edges** | *Where on a change of pace* an interval starts and ends. **Beep to beep** (default): from the first clear acceleration (effort 20 %) until just before the pace drops (effort 80 %), moved back by a 0.5 s reaction time. **Half-way**: the middle of each change. **Steady pace only**: just the plateau (cleanest pace, but shorter reps). Start, end and reaction time can also be set by hand. |
 | **Min rep / Min rest** | Shortest hard effort and shortest recovery that count. |
@@ -163,6 +172,14 @@ do not prove it matches your watch. Caveats:
 - Hills are inherently less sharp: grade comes from a barometric altitude that
   needs ~12 s of smoothing.
 
+## Versions and changelog
+
+The version number lives in `package.json` only (semantic versioning). The build injects it into the page, which shows it in
+the header and in the footer; the footer's **What's new** lists `CHANGELOG.md`, which is shipped inside the page.
+To release: add a `## [x.y.z] - YYYY-MM-DD` section to `CHANGELOG.md` (Added / Changed / Fixed), set the same number in
+`package.json` (`npm version` also works), and run `npm test`: a test fails if the two disagree, or if an entry is
+malformed. The changelog is written in English.
+
 ## Project layout
 
 ```
@@ -170,6 +187,7 @@ src/fit/        FIT decoding (official @garmin/fitsdk) into a normalised Activit
 src/analysis/   timeseries, change-points (PELT), signal & lap detection, metrics, summary
 src/sample/     synthetic workout generator + FIT encoder (tests, demos, samples/)
 src/ui/         the browser app (vanilla TypeScript, hand-built SVG chart)
+src/version.ts, src/changelog.ts, CHANGELOG.md   version number and release notes
 tests/          unit tests, FIT round-trip, precision benchmark
 ```
 

@@ -114,16 +114,35 @@ function describeGroup(reps: Segment[], idx: number[]): RepSpec {
 
 const specLabel = (s: RepSpec, loc: Locale) => (s.basis === "time" ? durationLabel(s.value) : distanceLabel(s.value, loc));
 
+/** A piece of the session description, with the reps it stands for (indices into Detection.reps). */
+export interface StructurePart {
+  text: string;
+  reps?: number[];
+}
+
+/** The session description in pieces, so the page can tie each piece to the reps it describes. */
+export function structureParts(sum: Pick<Summary, "sets" | "sequence" | "restValue">, loc: Locale): StructurePart[] {
+  const parts: StructurePart[] = [];
+  if (sum.sequence) {
+    sum.sequence.forEach((s, i) => {
+      if (i) parts.push({ text: " · " });
+      parts.push({ text: specLabel(s, loc), reps: [i] });
+    });
+  } else {
+    sum.sets.forEach((s, i) => {
+      if (i) parts.push({ text: " + " });
+      parts.push({ text: s.count === 1 ? specLabel(s, loc) : `${s.count} × ${specLabel(s, loc)}`, reps: s.repIndices });
+    });
+  }
+  if (sum.restValue !== undefined) parts.push({ text: ` / ${durationLabel(sum.restValue)} ${t("struct.rest", undefined, loc)}` });
+  return parts;
+}
+
 /** "6 × 800 m / 90 s rest", "400 m · 800 m · 1.2 km · 800 m · 400 m / 2 min rest" in the given language. */
-export function structureText(
-  sum: Pick<Summary, "sets" | "sequence" | "restValue">,
-  loc: Locale,
-): string {
-  let text = sum.sequence
-    ? sum.sequence.map((s) => specLabel(s, loc)).join(" · ")
-    : sum.sets.map((s) => (s.count === 1 ? specLabel(s, loc) : `${s.count} × ${specLabel(s, loc)}`)).join(" + ");
-  if (sum.restValue !== undefined) text += ` / ${durationLabel(sum.restValue)} ${t("struct.rest", undefined, loc)}`;
-  return text;
+export function structureText(sum: Pick<Summary, "sets" | "sequence" | "restValue">, loc: Locale): string {
+  return structureParts(sum, loc)
+    .map((p) => p.text)
+    .join("");
 }
 
 export function summarize(segments: Segment[]): Summary | null {

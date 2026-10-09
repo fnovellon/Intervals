@@ -12,6 +12,8 @@ export const fr: Record<Key, string> = {
   "app.theme": "Thème",
   "app.themeAria": "Basculer entre thème clair et thème sombre",
   "app.langAria": "Langue",
+  "app.version": "Version {version}",
+  "app.whatsNew": "Nouveautés (en anglais)",
   "app.footer":
     "Les limites correspondent au point médian de chaque changement d’allure, trouvé par détection de ruptures sur le signal de vitesse à 1 Hz (ou reprises des tours de la montre). Les distances proviennent de la courbe de distance enregistrée à ces limites.",
 
@@ -87,6 +89,7 @@ export const fr: Record<Key, string> = {
   "kind.other": "Autre",
 
   // ---- toolbar -----------------------------------------------------------------------
+  "tb.title": "Réglages de détection",
   "tb.aria": "Réglages de la détection",
   "tb.source": "Source",
   "tb.auto": "Auto",
@@ -97,42 +100,60 @@ export const fr: Record<Key, string> = {
   "tb.speed": "Vitesse",
   "tb.gap": "Ajustée à la pente",
   "tb.sensitivity": "Sensibilité",
-  "tb.sensitivityTitle":
-    "Variation d’allure minimale pour marquer le début ou la fin d’un intervalle. Plus haut : détecte des changements plus courts et plus discrets ; plus bas : ignore les petites variations.",
   "tb.edges": "Limites des intervalles",
-  "tb.edgesTitle": "Comment le début et la fin de chaque intervalle sont placés sur le changement d’allure.",
   "tb.preset": "Stratégie",
   "tb.preset.beep": "Bip à bip",
   "tb.preset.half": "Mi-chemin",
   "tb.preset.plateau": "Allure stable seulement",
   "tb.preset.custom": "Personnalisé",
-  "tb.presetTitle":
-    "Bip à bip\u00A0: de la première vraie accélération jusqu’au moment où l’allure commence à baisser, comme le définissent le bip de la montre et le coup de sifflet. Mi-chemin\u00A0: le milieu de chaque changement d’allure. Allure stable seulement\u00A0: uniquement le plateau (allure la plus propre, mais répétitions plus courtes).",
   "tb.startAt": "Début quand l’effort atteint",
-  "tb.startTitle": "Part de l’effort maximal que l’allure doit atteindre pour que l’intervalle commence. Plus bas\u00A0: il commence plus tôt, dès les premiers signes d’accélération.",
   "tb.endAt": "Fin quand l’effort tombe à",
-  "tb.endTitle": "Part de l’effort maximal à laquelle l’allure doit retomber pour que l’intervalle se termine. Plus haut\u00A0: il se termine plus tôt, dès que l’allure commence à baisser.",
   "tb.reaction": "Temps de réaction (s)",
-  "tb.reactionTitle": "Délai entre le bip ou le coup de sifflet et le changement d’allure. Les deux limites sont avancées d’autant.",
   "tb.edgeSummary": "début {start} · fin {end} · réaction {reaction} s",
-  "tb.minRepTitle": "Durée minimale d’un effort intense pour compter comme intervalle, en secondes.",
-  "tb.minRestTitle": "Durée minimale d’une récupération pour séparer deux intervalles, en secondes.",
-  "tb.thresholdTitle": "L’allure qui sépare effort intense et effort facile. Laisser vide pour le mode automatique.",
   "tb.minRep": "Effort min. (s)",
   "tb.minRest": "Récup. min. (s)",
   "tb.threshold": "Seuil effort/récup. ({unit})",
   "tb.snap": "Caler les tours sur l’allure",
-  "tb.snapTitle":
-    "Déplace les limites des tours que vous avez déclenchés à la main vers le changement d’allure réel le plus proche. Les tours d’une séance programmée ne sont jamais déplacés.",
   "tb.basis": "Allure d’après",
   "tb.basisDist": "Distance ÷ temps",
   "tb.basisDev": "Vitesse montre",
-  "tb.basisTitle":
-    "D’où viennent les allures. Distance ÷ temps\u00A0: distance parcourue sur la durée, comme le tableau des tours de Garmin Connect. Vitesse montre\u00A0: la vitesse enregistrée seconde par seconde par la montre, comme son écran pendant la course. Cette vitesse est lissée sur plusieurs secondes\u00A0: sur les répétitions courtes, elle reste en dessous de votre vraie allure.",
   "tb.units": "Unités",
   "tb.km": "km",
   "tb.mi": "mi",
   "tb.autoThreshold": "auto",
+  "tb.sourceDesc":
+    "D’où viennent les intervalles\u00A0: des tours enregistrés par ta montre, ou repérés d’après tes changements de vitesse. «\u00A0Auto\u00A0» choisit pour toi.",
+  "tb.paceTypeDesc":
+    "Allure normale, ou «\u00A0ajustée à la pente\u00A0», qui corrige l’effet des montées et des descentes. «\u00A0Auto\u00A0» ne corrige que si le parcours est vallonné.",
+  "tb.basisDesc":
+    "D’où viennent les allures affichées. «\u00A0Distance ÷ temps\u00A0»\u00A0: la distance parcourue divisée par la durée, comme dans Garmin Connect. «\u00A0Vitesse montre\u00A0»\u00A0: ce que ta montre affichait pendant la course\u00A0; elle est lissée, donc en retard sur les efforts courts.",
+  "tb.sensitivityDesc":
+    "Plus haut\u00A0: l’appli remarque de plus petits changements de rythme, au risque de voir des efforts qui n’en sont pas. Plus bas\u00A0: elle ne garde que les gros changements.",
+  "tb.startFrom": "Départ des efforts",
+  "tb.start.auto": "Auto",
+  "tb.start.standing": "À l’arrêt",
+  "tb.start.jogging": "En footing",
+  "tb.startFromDesc":
+    "Comment tu pars pour un effort. «\u00A0À l’arrêt\u00A0»\u00A0: l’effort commence dès que tu bouges. «\u00A0En footing\u00A0»\u00A0: il commence quand tu accélères, pas au début du footing. «\u00A0Auto\u00A0» regarde si tu trottinais juste avant.",
+  "tb.minRepDesc":
+    "Durée minimale, en secondes, d’un passage rapide pour compter comme un effort. Sert à ignorer les petites accélérations.",
+  "tb.minRestDesc":
+    "Durée minimale, en secondes, d’une récupération pour séparer deux efforts. Évite de couper un effort en deux au moindre ralentissement.",
+  "tb.thresholdDesc":
+    "L’allure qui sépare «\u00A0rapide\u00A0» de «\u00A0lent\u00A0». Laisse vide\u00A0: l’appli la trouve toute seule.",
+  "tb.snapDesc":
+    "Quand tu appuies sur le bouton «\u00A0tour\u00A0», tu es rarement pile au moment du changement d’allure. L’appli recale chaque tour sur le vrai changement.",
+  "tb.unitsDesc": "Kilomètres ou miles.",
+  "tb.edgesDesc":
+    "Où commence et où finit chaque effort sur un changement d’allure. Les réglages par défaut conviennent à la plupart des séances.",
+  "tb.presetDesc":
+    "«\u00A0Bip à bip\u00A0»\u00A0: l’effort commence dès que tu accélères et finit juste avant que tu ralentisses, comme le bip de la montre ou le coup de sifflet. «\u00A0Mi-chemin\u00A0»\u00A0: le milieu du changement d’allure. «\u00A0Allure stable seulement\u00A0»\u00A0: uniquement la partie à vitesse constante (efforts plus courts, mais allure plus propre).",
+  "tb.startAtDesc":
+    "À quel point de l’accélération l’effort commence. Bas\u00A0: dès les premiers pas plus rapides. Haut\u00A0: quand tu es presque à pleine vitesse.",
+  "tb.endAtDesc":
+    "À quel point du ralentissement l’effort s’arrête. Haut\u00A0: dès que tu commences à ralentir. Bas\u00A0: quand tu as presque fini de ralentir.",
+  "tb.reactionDesc":
+    "Le temps que tu mets à réagir au bip (environ une demi-seconde). Le début et la fin sont avancés d’autant.",
 
   // ---- results ------------------------------------------------------------------------
   "res.fromLaps": "Détecté à partir des tours de l’appareil. {reason}",
@@ -213,6 +234,16 @@ export const fr: Record<Key, string> = {
   "tt.ele": "Altitude",
   "tt.cad": "Cadence",
   "tt.grade": "Pente",
+  "tt.whole": "Sur tout l’intervalle",
+  "tt.duration": "Durée",
+  "tt.distance": "Distance",
+  "tt.avgPace": "Allure moyenne",
+  "tt.avgSpeed": "Vitesse moyenne",
+  "tt.best5": "Meilleurs 5 s",
+  "tt.avgHr": "FC moy.",
+  "tt.max": "max",
+  "tt.avgCad": "Cadence moy.",
+  "tt.fade": "Dérive",
   "unit.spm": "ppm",
   "unit.bpm": "bpm",
 
