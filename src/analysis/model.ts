@@ -3,7 +3,7 @@ import type { Seconds } from "../fit/types";
 export type SegmentKind = "warmup" | "work" | "rest" | "cooldown" | "other";
 export type SegmentSource = "signal" | "lap" | "manual";
 export type DetectMode = "auto" | "signal" | "laps";
-export type SignalKind = "speed" | "gap";
+export type SignalKind = "auto" | "speed" | "gap";
 
 export interface Segment {
   id: number;
@@ -67,7 +67,10 @@ export interface SegmentSpec {
 
 export interface DetectOptions {
   mode: DetectMode;
-  /** Which speed channel to segment on. "gap" removes the effect of hills. */
+  /**
+   * Which speed channel to segment on. "gap" (grade-adjusted) removes the effect
+   * of hills; "auto" picks it when the route is hilly.
+   */
   signal: SignalKind;
   /** 0.5 = conservative .. 2 = aggressive. 1 is a good default. */
   sensitivity: number;
@@ -75,7 +78,11 @@ export interface DetectOptions {
   minWorkSec: number;
   /** Shortest recovery that separates two reps. */
   minRestSec: number;
-  /** Move manual lap boundaries to the nearest real pace change. */
+  /**
+   * Move lap boundaries that were placed by hand (lap button) to the nearest
+   * real pace change. Laps of a structured workout are never moved: the watch
+   * ended those steps exactly.
+   */
   snapLaps: boolean;
   /** Override the work/rest speed threshold (m/s). Auto when undefined. */
   thresholdSpeed?: number;
@@ -83,11 +90,11 @@ export interface DetectOptions {
 
 export const DEFAULT_OPTIONS: DetectOptions = {
   mode: "auto",
-  signal: "speed",
+  signal: "auto",
   sensitivity: 1,
   minWorkSec: 10,
   minRestSec: 6,
-  snapLaps: false,
+  snapLaps: true,
 };
 
 export interface RepSet {
@@ -133,6 +140,8 @@ export interface Summary {
 export interface Detection {
   modeUsed: "signal" | "laps";
   modeReason: string;
+  /** Speed channel the segmentation actually ran on. */
+  signalUsed: "speed" | "gap";
   segments: Segment[];
   /** Work segments, in order. */
   reps: Segment[];

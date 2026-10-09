@@ -4,7 +4,10 @@ import { measureAll } from "./measure";
 import { DEFAULT_OPTIONS, type DetectOptions, type Detection, type SegmentSpec } from "./model";
 import { detectSignal } from "./signal";
 import { summarize } from "./summary";
-import { buildSeries, type Series } from "./timeseries";
+import { buildSeries, hillShare, type Series } from "./timeseries";
+
+/** Share of moving time on slopes >= 4 % above which grade-adjusted pace is used in "auto". */
+const HILLY_SHARE = 0.08;
 
 export interface Analysis {
   series: Series;
@@ -22,15 +25,24 @@ export function detect(activity: Activity, series: Series, partial: Partial<Dete
   const options: DetectOptions = { ...DEFAULT_OPTIONS, ...partial };
   const notes = [...series.notes];
 
-  const useGap = options.signal === "gap";
-  if (useGap && !series.hasAltitude) notes.push("No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.");
-  const signal = useGap && series.hasAltitude ? series.gapSpeed : series.speed;
+  let useGap = options.signal === "gap";
+  if (options.signal === "auto" && hillShare(series) >= HILLY_SHARE) {
+    useGap = true;
+    notes.push("Hilly route: intervals were segmented on grade-adjusted pace.");
+  }
+  if (useGap && !series.hasAltitude) {
+    notes.push("No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.");
+    useGap = false;
+  }
+  const signalUsed = useGap ? "gap" : "speed";
+  const signal = useGap ? series.gapSpeed : series.speed;
 
   if (options.mode !== "signal") {
     const lap = detectLaps(activity.laps, activity.steps, series, signal, options);
     if (lap.informative) {
       return assemble(series, lap.specs, {
         modeUsed: "laps",
+        signalUsed,
         modeReason: lap.reason,
         threshold: lap.threshold,
         separation: lap.separation,
@@ -48,6 +60,7 @@ export function detect(activity: Activity, series: Series, partial: Partial<Dete
   const sig = detectSignal(series, signal, options);
   return assemble(series, sig.specs, {
     modeUsed: "signal",
+    signalUsed,
     modeReason: "Intervals were found from the pace signal (change-point detection).",
     threshold: sig.threshold,
     separation: sig.separation,
@@ -63,7 +76,7 @@ export function detect(activity: Activity, series: Series, partial: Partial<Dete
 export function assemble(
   series: Series,
   specs: SegmentSpec[],
-  meta: Pick<Detection, "modeUsed" | "modeReason" | "notes" | "options"> &
+  meta: Pick<Detection, "modeUsed" | "signalUsed" | "modeReason" | "notes" | "options"> &
     Partial<Pick<Detection, "threshold" | "separation">>,
 ): Detection {
   const segments = measureAll(series, specs);
@@ -81,6 +94,7 @@ export function assemble(
 export function rebuild(series: Series, specs: SegmentSpec[], previous: Detection): Detection {
   return assemble(series, specs, {
     modeUsed: previous.modeUsed,
+    signalUsed: previous.signalUsed,
     modeReason: previous.modeReason,
     threshold: previous.threshold,
     separation: previous.separation,

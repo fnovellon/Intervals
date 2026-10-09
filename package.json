@@ -10,12 +10,14 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bench": "vitest run bench --reporter=verbose"
+    "bench": "vitest run bench --reporter=verbose",
+    "samples": "GENERATE_SAMPLES=1 vitest run tests/samples.test.ts"
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.218.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vite-plugin-singlefile": "^2.3.3",

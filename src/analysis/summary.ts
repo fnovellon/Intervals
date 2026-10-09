@@ -5,6 +5,7 @@ const NICE_DISTANCES = [
   8000, 10000,
 ];
 const MILE = 1609.344;
+const MILE_DISTANCES = [MILE / 4, MILE / 2, MILE, 2 * MILE, 3 * MILE];
 
 const median = (v: number[]): number => {
   const s = [...v].sort((a, b) => a - b);
@@ -14,32 +15,40 @@ const median = (v: number[]): number => {
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 const cv = (v: number[]) => (v.length > 1 && mean(v) > 0 ? Math.sqrt(mean(v.map((x) => (x - mean(v)) ** 2))) / mean(v) : 0);
 
-/** Round a distance to the number an athlete would have written in the workout. */
+/**
+ * Round a distance to the number an athlete would have written in the workout.
+ * Metric track distances win over mile fractions (400 m vs 1/4 mi are 0.6 % apart)
+ * unless the mile value is clearly the closer one.
+ */
 export function niceDistance(m: number): { value: number; label: string; relError: number } {
-  const candidates = [...NICE_DISTANCES, MILE / 4, MILE / 2, MILE, 2 * MILE, 3 * MILE];
-  let best = candidates[0];
-  for (const c of candidates) if (Math.abs(c - m) / m < Math.abs(best - m) / m) best = c;
-  const relError = Math.abs(best - m) / m;
-  const isMiles = [MILE / 4, MILE / 2, MILE, 2 * MILE, 3 * MILE].includes(best);
-  if (relError > 0.04) {
+  const nearest = (list: number[]) => list.reduce((best, c) => (Math.abs(c - m) < Math.abs(best - m) ? c : best), list[0]);
+  const metric = nearest(NICE_DISTANCES);
+  const mile = nearest(MILE_DISTANCES);
+  const errMetric = Math.abs(metric - m) / m;
+  const errMile = Math.abs(mile - m) / m;
+  if (errMile < 0.5 * errMetric && errMile < 0.015) {
+    const mi = mile / MILE;
+    return { value: mile, label: `${mi === 0.25 ? "¼" : mi === 0.5 ? "½" : String(mi)} mi`, relError: errMile };
+  }
+  if (errMetric > 0.04) {
     // Not a standard distance: just print what was run.
     const value = m < 1000 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50;
-    return { value, label: formatMetres(value), relError };
+    return { value, label: formatMetres(value), relError: errMetric };
   }
-  if (isMiles) {
-    const mi = best / MILE;
-    return { value: best, label: `${mi === 0.25 ? "¼" : mi === 0.5 ? "½" : String(mi)} mi`, relError };
-  }
-  return { value: best, label: formatMetres(best), relError };
+  return { value: metric, label: formatMetres(metric), relError: errMetric };
 }
 
 function formatMetres(m: number): string {
   return m >= 1000 ? `${trimZeros(m / 1000)} km` : `${Math.round(m)} m`;
 }
 
-/** Round a duration to a number of seconds somebody would put in a workout. */
-export function niceDuration(s: number): { value: number; label: string; relError: number } {
-  const step = s < 60 ? 5 : s <= 300 ? 15 : 30;
+/**
+ * Round a duration to a number of seconds somebody would put in a workout.
+ * `fine` uses 5 s steps up to 2 min (recoveries are often 75, 100, 105 s);
+ * the default is the coarser set of "round" rep durations (30 s, 45 s, 2 min, ...).
+ */
+export function niceDuration(s: number, fine = false): { value: number; label: string; relError: number } {
+  const step = s < 60 ? 5 : s < 120 && fine ? 5 : s <= 300 ? 15 : 30;
   const v = Math.max(step, Math.round(s / step) * step);
   const relError = Math.abs(v - s) / s;
   if (v < 120) return { value: v, label: `${v} s`, relError };
@@ -76,11 +85,15 @@ function describeGroup(reps: Segment[], idx: number[]): string {
   const dur = idx.map((i) => reps[i].duration);
   const d = niceDistance(median(dist));
   const t = niceDuration(median(dur));
-  // Describe the rep by whichever of distance / duration is the rounder number
-  // (800 m, 2 min); if they tie, by whichever varies less across the group.
+  // Which quantity did the athlete prescribe? Whichever stays constant across
+  // the reps; failing that, the rounder number, with a bias towards standard
+  // track distances (200 m, 400 m, ...) over times that merely happen to round.
   let timeBased: boolean;
-  if (Math.abs(d.relError - t.relError) > 0.005) timeBased = t.relError < d.relError;
-  else timeBased = idx.length >= 2 && cv(dur) < cv(dist) * 0.8;
+  const cvD = cv(dist);
+  const cvT = cv(dur);
+  if (idx.length >= 3 && cvT < 0.6 * cvD) timeBased = true;
+  else if (idx.length >= 3 && cvD < 0.6 * cvT) timeBased = false;
+  else timeBased = (d.relError > 0.03 && t.relError < d.relError) || (d.relError > 0.01 && t.relError < d.relError / 3);
   const what = timeBased ? t.label : d.label;
   return idx.length === 1 ? what : `${idx.length} × ${what}`;
 }
@@ -148,7 +161,7 @@ export function summarize(segments: Segment[]): Summary | null {
   const restTimes = (between.length ? between : rests).map((r) => r.duration);
 
   let structure = groups.length <= 4 ? sets.map((s) => s.label).join(" + ") : reps.map((_, i) => describeGroup(reps, [i])).join(" · ");
-  if (restTimes.length) structure += ` / ${niceDuration(median(restTimes)).label} rest`;
+  if (restTimes.length) structure += ` / ${niceDuration(median(restTimes), true).label} rest`;
 
   return {
     repCount: reps.length,

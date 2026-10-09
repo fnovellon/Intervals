@@ -1,0 +1,676 @@
+import type { Detection, Segment } from "../analysis/model";
+import { distanceAt, quantile, type Series } from "../analysis/timeseries";
+import { clear, h, s } from "./dom";
+import { distance as fmtDistance, duration, KIND_LABEL, type SpeedDisplay, type Units } from "./format";
+
+export type XMode = "time" | "distance";
+
+export interface ChartProps {
+  series: Series;
+  detection: Detection;
+  display: SpeedDisplay;
+  units: Units;
+  xMode: XMode;
+  /** Visible time window in seconds, or null for everything. */
+  zoom: [number, number] | null;
+  selected: number | null;
+  /** Draw the work/rest threshold line (only meaningful for plain pace). */
+  showThreshold: boolean;
+}
+
+export interface ChartHandlers {
+  onSelect(id: number | null): void;
+  onZoom(range: [number, number] | null): void;
+  /** Boundary between segments[index - 1] and segments[index] moved to `time`. */
+  onMoveBoundary(index: number, time: number): void;
+}
+
+const M = { left: 60, right: 14, top: 2 };
+const STRIP_H = 30;
+const STRIP_GAP = 10;
+const TITLE_H = 20;
+const PANEL_GAP = 12;
+const AXIS_H = 26;
+const MIN_SEG_S = 2;
+
+interface Panel {
+  key: "pace" | "hr" | "ele";
+  title: string;
+  top: number; // top of plot area
+  height: number;
+  /** y for a value */
+  y(v: number): number;
+  ticks: number[];
+  fmt(v: number): string;
+}
+
+export class TimelineChart {
+  readonly el: HTMLElement;
+  private svg: SVGSVGElement | null = null;
+  private tooltip: HTMLElement;
+  private props!: ChartProps;
+  private cursor: number | null = null;
+  private geom!: {
+    width: number;
+    plotL: number;
+    plotR: number;
+    plotTop: number;
+    plotBottom: number;
+    xd0: number;
+    xd1: number;
+    t0: number;
+    t1: number;
+  };
+  private panels: Panel[] = [];
+  private cross?: SVGGElement;
+
+  constructor(private handlers: ChartHandlers) {
+    this.tooltip = h("div", { class: "tooltip", hidden: true, role: "status" });
+    this.el = h("div", {
+      class: "chart-wrap",
+      tabindex: "0",
+      role: "group",
+      "aria-label": "Interval timeline. Use left and right arrow keys to inspect values, Enter to select the interval under the cursor.",
+      on: { keydown: (e) => this.onKey(e as KeyboardEvent), blur: () => this.hideCursor() },
+    });
+    this.el.append(this.tooltip);
+  }
+
+  /** Current pixel width available to the chart. */
+  get width(): number {
+    return Math.max(320, Math.floor(this.el.clientWidth));
+  }
+
+  render(props: ChartProps) {
+    this.props = props;
+    const { series, detection, display } = props;
+    const width = this.width;
+    const hasHr = series.hasHr;
+    const hasEle = series.hasAltitude;
+
+    // ---- x geometry -----------------------------------------------------------------
+    const [t0, t1] = props.zoom ?? [0, series.n - 1];
+    const xOfT = (t: number) => (props.xMode === "time" ? t : distanceAt(series, t));
+    const xd0 = xOfT(t0);
+    const xd1 = Math.max(xd0 + 1e-6, xOfT(t1));
+    const plotL = M.left;
+    const plotR = width - M.right;
+    const px = (xv: number) => plotL + ((xv - xd0) / (xd1 - xd0)) * (plotR - plotL);
+    const pxT = (t: number) => px(xOfT(t));
+
+    // ---- vertical layout --------------------------------------------------------------
+    let y = M.top;
+    const stripTop = y;
+    y += STRIP_H + STRIP_GAP;
+    const plotTop = y;
+    const panels: Panel[] = [];
+    const addPanel = (key: Panel["key"], title: string, height: number, mk: (top: number, height: number) => Omit<Panel, "key" | "title" | "top" | "height">) => {
+      const top = y + TITLE_H;
+      panels.push({ key, title, top, height, ...mk(top, height) });
+      y = top + height + PANEL_GAP;
+    };
+
+    // pace / speed domain from the whole activity so zooming does not rescale
+    const movingSpeeds: number[] = [];
+    // Ignore standing and the brief ramps through it: they would stretch the axis to 12+ min/km.
+    for (let i = 0; i < series.n; i += 2) if (series.speed[i] > 1.5) movingSpeeds.push(series.speed[i]);
+    const axisVals = movingSpeeds.map(display.toAxis);
+    let lo: number;
+    let hi: number;
+    if (display.isPace) {
+      lo = quantile(axisVals, 0.004) * 0.96;
+      hi = quantile(axisVals, 0.98) * 1.06;
+    } else {
+      lo = 0;
+      hi = quantile(axisVals, 0.996) * 1.08;
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+      lo = 0;
+      hi = 1;
+    }
+    const paceStep = display.isPace ? niceStep((hi - lo) / 5, [10, 15, 30, 60, 120]) : niceStep((hi - lo) / 5, [1, 2, 5, 10]);
+    const paceTicks = ticksBetween(lo, hi, paceStep);
+    const clampAxis = (v: number) => Math.min(hi, Math.max(lo, v));
+    addPanel("pace", `${display.label} (${display.unit})`, 210, (top, height) => ({
+      y: (v) => (display.isPace ? top + ((clampAxis(v) - lo) / (hi - lo)) * height : top + height - ((clampAxis(v) - lo) / (hi - lo)) * height),
+      ticks: paceTicks,
+      fmt: display.formatAxis,
+    }));
+
+    if (hasHr) {
+      const hrs = Array.from(series.hr).filter(Number.isFinite);
+      const hmin = Math.floor((quantile(hrs, 0.002) - 4) / 10) * 10;
+      const hmax = Math.ceil((quantile(hrs, 0.998) + 4) / 10) * 10;
+      const step = niceStep((hmax - hmin) / 3, [10, 20, 25, 50]);
+      addPanel("hr", "Heart rate (bpm)", 96, (top, height) => ({
+        y: (v) => top + height - ((Math.min(hmax, Math.max(hmin, v)) - hmin) / (hmax - hmin)) * height,
+        ticks: ticksBetween(hmin, hmax, step),
+        fmt: (v) => String(Math.round(v)),
+      }));
+    }
+    const eleScale = props.units === "imperial" ? 3.28084 : 1;
+    const eleUnit = props.units === "imperial" ? "ft" : "m";
+    if (hasEle) {
+      const alts = Array.from(series.altitude).filter(Number.isFinite).map((a) => a * eleScale);
+      const emin = Math.min(...alts);
+      const emax = Math.max(...alts);
+      const span = Math.max(emax - emin, 10 * eleScale);
+      const lo2 = emin - span * 0.1;
+      const hi2 = emin + span * 1.1;
+      addPanel("ele", `Elevation (${eleUnit})`, 60, (top, height) => ({
+        y: (v) => top + height - ((v - lo2) / (hi2 - lo2)) * height,
+        ticks: ticksBetween(lo2, hi2, niceStep((hi2 - lo2) / 2, [5, 10, 20, 50, 100, 200])),
+        fmt: (v) => String(Math.round(v)),
+      }));
+    }
+    const plotBottom = y - PANEL_GAP;
+    const axisTop = plotBottom + 6;
+    const totalH = axisTop + AXIS_H;
+    this.panels = panels;
+    this.geom = { width, plotL, plotR, plotTop, plotBottom, xd0, xd1, t0, t1 };
+
+    // ---- svg ------------------------------------------------------------------------------
+    const svg = s("svg", {
+      class: "chart",
+      width,
+      height: totalH,
+      viewBox: `0 0 ${width} ${totalH}`,
+      role: "img",
+      "aria-label": this.summaryLabel(),
+    });
+    const clipId = `clip-${Math.random().toString(36).slice(2, 8)}`;
+    svg.append(
+      s("defs", {}, s("clipPath", { id: clipId }, s("rect", { x: plotL, y: stripTop, width: plotR - plotL, height: totalH }))),
+    );
+
+    const segs = detection.segments;
+    const inView = (sg: Segment) => sg.end > t0 && sg.start < t1;
+
+    // bands (behind everything)
+    const bands = s("g", { "clip-path": `url(#${clipId})` });
+    for (const sg of segs) {
+      if (!inView(sg)) continue;
+      const sel = props.selected === sg.id;
+      const cls = sel ? "band-sel" : sg.kind === "work" ? "band-work" : sg.kind === "warmup" || sg.kind === "cooldown" ? "band-other" : "";
+      if (!cls) continue;
+      const x0 = Math.max(plotL, pxT(sg.start));
+      const x1 = Math.min(plotR, pxT(sg.end));
+      bands.append(s("rect", { class: cls, x: x0, y: plotTop, width: Math.max(0, x1 - x0), height: plotBottom - plotTop }));
+    }
+    svg.append(bands);
+
+    // panels: grid, ticks, titles
+    for (const p of panels) {
+      const g = s("g");
+      g.append(s("text", { class: "panel-title", x: plotL - M.left + 2, y: p.top - 7 }, p.title));
+      for (const tv of p.ticks) {
+        const yy = p.y(tv);
+        if (yy < p.top - 0.5 || yy > p.top + p.height + 0.5) continue;
+        g.append(s("line", { class: "grid", x1: plotL, x2: plotR, y1: yy, y2: yy }));
+        g.append(s("text", { x: plotL - 8, y: yy + 4, "text-anchor": "end" }, p.fmt(tv)));
+      }
+      g.append(s("line", { class: "axis", x1: plotL, x2: plotR, y1: p.top + p.height, y2: p.top + p.height }));
+      svg.append(g);
+    }
+
+    // x axis ticks (drawn under the last panel)
+    svg.append(this.xAxis(axisTop, px, props, series));
+
+    // data lines
+    const plotW = plotR - plotL;
+    const iLo = Math.max(0, Math.floor(t0) - 1);
+    const iHi = Math.min(series.n - 1, Math.ceil(t1) + 1);
+    const lineGroup = s("g", { "clip-path": `url(#${clipId})` });
+    const paceP = panels.find((p) => p.key === "pace")!;
+    lineGroup.append(
+      s("path", { class: "raw", d: pathOf(bucketize(iLo, iHi, plotW, (i) => xOfT(i), px, (i) => series.speed[i], (v) => paceP.y(display.toAxis(v)))) }),
+    );
+    // detected segment averages
+    const stepsG = s("g");
+    const reps = detection.reps;
+    const main = detection.summary?.mainSet ?? [];
+    const labelled = new Set<number>();
+    if (detection.summary && main.length > 1) {
+      if (detection.summary.fastestRep !== undefined) labelled.add(reps[detection.summary.fastestRep]?.id);
+      if (detection.summary.slowestRep !== undefined) labelled.add(reps[detection.summary.slowestRep]?.id);
+    }
+    for (const sg of segs) {
+      if (!inView(sg) || sg.avgSpeed < 0.5) continue; // standing: nothing to draw
+      const xa = Math.max(plotL, pxT(sg.start));
+      const xb = Math.min(plotR, pxT(sg.end));
+      if (xb - xa < 1) continue;
+      const yy = paceP.y(display.toAxis(sg.avgSpeed));
+      stepsG.append(s("line", { class: sg.kind === "work" ? "step-work" : "step-other", x1: xa + 1, x2: xb - 1, y1: yy, y2: yy }));
+      if (labelled.has(sg.id) && xb - xa > 38) {
+        const fast = detection.summary!.fastestRep !== undefined && reps[detection.summary!.fastestRep].id === sg.id;
+        stepsG.append(
+          s("text", { class: "value-label", x: (xa + xb) / 2, y: yy + (fast ? -7 : 15), "text-anchor": "middle" }, display.format(sg.avgSpeed)),
+        );
+      }
+    }
+    lineGroup.append(stepsG);
+
+    if (props.showThreshold && detection.threshold !== undefined) {
+      const yt = paceP.y(display.toAxis(detection.threshold));
+      lineGroup.append(s("line", { class: "thr-line", x1: plotL, x2: plotR, y1: yt, y2: yt, "stroke-dasharray": "0" }));
+      lineGroup.append(
+        s("text", { x: plotR - 4, y: yt - 4, "text-anchor": "end" }, `work/rest threshold ${display.format(detection.threshold)}`),
+      );
+    }
+
+    const hrP = panels.find((p) => p.key === "hr");
+    if (hrP) {
+      lineGroup.append(
+        s("path", { class: "line-hr", d: pathOf(bucketize(iLo, iHi, plotW, (i) => xOfT(i), px, (i) => series.hr[i], (v) => hrP.y(v))) }),
+      );
+    }
+    const eleP = panels.find((p) => p.key === "ele");
+    if (eleP) {
+      const pts = bucketize(iLo, iHi, plotW, (i) => xOfT(i), px, (i) => series.altitude[i] * eleScale, (v) => eleP.y(v));
+      if (pts.length) {
+        const base = eleP.top + eleP.height;
+        lineGroup.append(s("path", { class: "area-ele", d: `${pathOf(pts)} L${pts[pts.length - 1][0].toFixed(1)},${base} L${pts[0][0].toFixed(1)},${base} Z` }));
+        lineGroup.append(s("path", { class: "line-ele", d: pathOf(pts) }));
+      }
+    }
+    svg.append(lineGroup);
+
+    // ---- segment strip (selection + draggable boundaries) ---------------------------------------
+    const stripG = s("g", { "clip-path": `url(#${clipId})` });
+    let repNo = 0;
+    const repNumber = new Map<number, number>();
+    for (const sg of segs) if (sg.kind === "work") repNumber.set(sg.id, ++repNo);
+    for (const sg of segs) {
+      if (!inView(sg)) continue;
+      const xa = pxT(sg.start) + 1;
+      const xb = pxT(sg.end) - 1;
+      const w = xb - xa;
+      if (w < 1) continue;
+      const isWork = sg.kind === "work";
+      stripG.append(s("rect", { class: isWork ? "seg-work" : "seg-other", x: xa, y: stripTop, width: w, height: STRIP_H, rx: 4 }));
+      const label = isWork ? String(repNumber.get(sg.id)) : sg.kind === "warmup" ? "Warm-up" : sg.kind === "cooldown" ? "Cool-down" : sg.kind === "rest" ? "" : "";
+      const needed = label.length * 7.2 + 8;
+      if (label && w >= needed) {
+        stripG.append(s("text", { class: `seg-label${isWork ? "" : " other"}`, x: xa + w / 2, y: stripTop + STRIP_H / 2 + 4, "text-anchor": "middle" }, label));
+      }
+      if (props.selected === sg.id) {
+        stripG.append(s("rect", { class: "seg-sel", x: xa - 1, y: stripTop - 1, width: w + 2, height: STRIP_H + 2, rx: 5 }));
+      }
+      stripG.append(
+        s("rect", {
+          class: "seg-hit",
+          x: xa,
+          y: stripTop,
+          width: w,
+          height: STRIP_H,
+          on: { click: () => this.handlers.onSelect(props.selected === sg.id ? null : sg.id) },
+        }),
+      );
+    }
+    svg.append(stripG);
+
+    // boundary handles
+    const handleG = s("g");
+    for (let i = 1; i < segs.length; i++) {
+      const t = segs[i].start;
+      if (t <= t0 || t >= t1) continue;
+      handleG.append(this.makeHandle(i, pxT(t), stripTop, plotBottom, props));
+    }
+    svg.append(handleG);
+
+    // ---- crosshair + overlay ----------------------------------------------------------------------
+    this.cross = s("g", { visibility: "hidden" });
+    svg.append(this.cross);
+    const brush = s("rect", { class: "brush", y: plotTop, height: plotBottom - plotTop, visibility: "hidden" });
+    svg.append(brush);
+    const overlay = s("rect", { class: "overlay", x: plotL, y: plotTop, width: plotR - plotL, height: plotBottom - plotTop });
+    this.attachOverlay(overlay, brush);
+    svg.append(overlay);
+
+    if (this.svg) this.svg.replaceWith(svg);
+    else this.el.prepend(svg);
+    this.svg = svg;
+    if (this.cursor !== null) this.showCursor(this.cursor, null);
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // pieces
+  // ------------------------------------------------------------------------------------------
+
+  private summaryLabel(): string {
+    const { detection, display } = this.props;
+    const sum = detection.summary;
+    if (!detection.intervalsFound || !sum) return `${display.label} timeline. No intervals detected.`;
+    return `${display.label} timeline with ${sum.repCount} detected work intervals: ${sum.structure}. Full values are in the table below.`;
+  }
+
+  private xAxis(axisTop: number, px: (x: number) => number, props: ChartProps, series: Series): SVGGElement {
+    const g = s("g", { class: "tick-x" });
+    const { plotL, plotR, xd0, xd1 } = this.geom;
+    const approxTicks = Math.max(2, Math.floor((plotR - plotL) / 90));
+    let ticks: number[];
+    let fmt: (v: number) => string;
+    if (props.xMode === "time") {
+      const step = niceStep((xd1 - xd0) / approxTicks, [5, 10, 15, 30, 60, 120, 300, 600, 900, 1200, 1800, 3600, 7200]);
+      ticks = ticksBetween(xd0, xd1, step);
+      fmt = (v) => duration(v);
+    } else {
+      const unit = props.units === "imperial" ? 1609.344 : 1000;
+      const stepU = niceStep((xd1 - xd0) / unit / approxTicks, [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]);
+      ticks = ticksBetween(xd0 / unit, xd1 / unit, stepU).map((v) => v * unit);
+      fmt = (v) => `${+(v / unit).toFixed(2)} ${props.units === "imperial" ? "mi" : "km"}`;
+    }
+    for (const tv of ticks) {
+      const x = px(tv);
+      if (x < plotL - 1 || x > plotR + 1) continue;
+      g.append(s("line", { class: "axis", x1: x, x2: x, y1: axisTop - 6, y2: axisTop - 2 }));
+      g.append(s("text", { x, y: axisTop + 12, "text-anchor": "middle" }, fmt(tv)));
+    }
+    void series;
+    return g;
+  }
+
+  private makeHandle(index: number, x: number, top: number, bottom: number, props: ChartProps): SVGGElement {
+    const g = s("g", { class: "handle" });
+    g.append(s("line", { class: "handle-line", x1: x, x2: x, y1: top, y2: bottom }));
+    g.append(s("circle", { class: "handle-knob", cx: x, cy: top + STRIP_H / 2, r: 5 }));
+    const hit = s("rect", { class: "handle-hit", x: x - 8, y: top - 2, width: 16, height: STRIP_H + 4 });
+    g.append(hit);
+    const title = s("title", {}, "Drag to move this boundary");
+    hit.append(title);
+
+    hit.addEventListener("pointerdown", (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      hit.setPointerCapture(ev.pointerId);
+      g.classList.add("drag");
+      this.hideCursor();
+      const segs = props.detection.segments;
+      const minT = segs[index - 1].start + MIN_SEG_S;
+      const maxT = segs[index].end - MIN_SEG_S;
+      let current = segs[index].start;
+      const move = (e: PointerEvent) => {
+        current = Math.min(maxT, Math.max(minT, this.timeAtClientX(e.clientX)));
+        const nx = this.pxOfTime(current);
+        g.querySelector(".handle-line")!.setAttribute("x1", String(nx));
+        g.querySelector(".handle-line")!.setAttribute("x2", String(nx));
+        g.querySelector(".handle-knob")!.setAttribute("cx", String(nx));
+        hit.setAttribute("x", String(nx - 8));
+        this.showTip(nx, top + STRIP_H, `${duration(current, 1)} · ${fmtDistance(distanceAt(props.series, current), props.units)}`);
+      };
+      const up = () => {
+        hit.removeEventListener("pointermove", move);
+        hit.removeEventListener("pointerup", up);
+        hit.removeEventListener("pointercancel", up);
+        g.classList.remove("drag");
+        this.tooltip.hidden = true;
+        if (Math.abs(current - segs[index].start) > 0.05) this.handlers.onMoveBoundary(index, current);
+      };
+      hit.addEventListener("pointermove", move);
+      hit.addEventListener("pointerup", up);
+      hit.addEventListener("pointercancel", up);
+    });
+    return g;
+  }
+
+  private attachOverlay(overlay: SVGRectElement, brush: SVGRectElement) {
+    let dragStart: number | null = null;
+    let moved = false;
+
+    overlay.addEventListener("pointermove", (e) => {
+      const t = this.timeAtClientX(e.clientX);
+      if (dragStart !== null) {
+        const x = this.localX(e.clientX);
+        if (Math.abs(x - dragStart) > 4) moved = true;
+        if (moved) {
+          brush.setAttribute("x", String(Math.min(x, dragStart)));
+          brush.setAttribute("width", String(Math.abs(x - dragStart)));
+          brush.setAttribute("visibility", "visible");
+        }
+      }
+      this.showCursor(Math.round(t), e);
+    });
+    overlay.addEventListener("pointerleave", () => {
+      if (dragStart === null) this.hideCursor();
+    });
+    overlay.addEventListener("pointerdown", (e) => {
+      overlay.setPointerCapture(e.pointerId);
+      dragStart = this.localX(e.clientX);
+      moved = false;
+    });
+    const finish = (e: PointerEvent) => {
+      if (dragStart === null) return;
+      const a = this.timeAtX(dragStart);
+      const b = this.timeAtClientX(e.clientX);
+      brush.setAttribute("visibility", "hidden");
+      const wasMoved = moved;
+      dragStart = null;
+      moved = false;
+      if (wasMoved && Math.abs(b - a) >= 10) {
+        this.handlers.onZoom([Math.max(0, Math.min(a, b)), Math.min(this.props.series.n - 1, Math.max(a, b))]);
+      } else if (!wasMoved) {
+        const t = this.timeAtClientX(e.clientX);
+        const seg = this.props.detection.segments.find((sg) => t >= sg.start && t < sg.end);
+        this.handlers.onSelect(seg && this.props.selected !== seg.id ? seg.id : null);
+      }
+    };
+    overlay.addEventListener("pointerup", finish);
+    overlay.addEventListener("pointercancel", () => {
+      dragStart = null;
+      moved = false;
+      brush.setAttribute("visibility", "hidden");
+    });
+    overlay.addEventListener("dblclick", () => this.handlers.onZoom(null));
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // coordinate helpers
+  // ------------------------------------------------------------------------------------------
+
+  private localX(clientX: number): number {
+    return clientX - this.el.getBoundingClientRect().left;
+  }
+
+  private timeAtClientX(clientX: number): number {
+    return this.timeAtX(this.localX(clientX));
+  }
+
+  /** Pixel x (relative to the chart) to time in seconds. */
+  private timeAtX(x: number): number {
+    const { plotL, plotR, xd0, xd1 } = this.geom;
+    const xv = xd0 + ((Math.min(plotR, Math.max(plotL, x)) - plotL) / (plotR - plotL)) * (xd1 - xd0);
+    if (this.props.xMode === "time") return Math.min(this.props.series.n - 1, Math.max(0, xv));
+    // invert the (monotone) cumulative distance
+    const d = this.props.series.dist;
+    let lo = 0;
+    let hi = d.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (d[mid] < xv) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === 0) return 0;
+    const span = d[lo] - d[lo - 1];
+    return span > 0 ? lo - 1 + (xv - d[lo - 1]) / span : lo;
+  }
+
+  private pxOfTime(t: number): number {
+    const { plotL, plotR, xd0, xd1 } = this.geom;
+    const xv = this.props.xMode === "time" ? t : distanceAt(this.props.series, t);
+    return plotL + ((xv - xd0) / (xd1 - xd0)) * (plotR - plotL);
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // crosshair + tooltip
+  // ------------------------------------------------------------------------------------------
+
+  private onKey(e: KeyboardEvent) {
+    const n = this.props.series.n;
+    const { t0, t1 } = this.geom;
+    const step = e.shiftKey ? 10 : 1;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const base = this.cursor ?? Math.round((t0 + t1) / 2);
+      const next = Math.min(Math.min(n - 1, Math.ceil(t1)), Math.max(Math.max(0, Math.floor(t0)), base + (e.key === "ArrowRight" ? step : -step)));
+      this.showCursor(next, null);
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      this.showCursor(e.key === "Home" ? Math.max(0, Math.floor(t0)) : Math.min(n - 1, Math.floor(t1)), null);
+    } else if (e.key === "Escape") {
+      this.hideCursor();
+    } else if (e.key === "Enter" && this.cursor !== null) {
+      const seg = this.props.detection.segments.find((sg) => this.cursor! >= sg.start && this.cursor! < sg.end);
+      this.handlers.onSelect(seg ? seg.id : null);
+    }
+  }
+
+  private hideCursor() {
+    this.cursor = null;
+    if (this.cross) this.cross.setAttribute("visibility", "hidden");
+    this.tooltip.hidden = true;
+  }
+
+  private showCursor(i: number, pointer: PointerEvent | null) {
+    const { series, detection, display, units } = this.props;
+    if (!this.cross || !this.svg) return;
+    i = Math.max(0, Math.min(series.n - 1, i));
+    this.cursor = i;
+    const x = this.pxOfTime(i);
+    const { plotL, plotR, plotTop, plotBottom } = this.geom;
+    if (x < plotL - 1 || x > plotR + 1) {
+      this.hideCursor();
+      return;
+    }
+    clear(this.cross);
+    this.cross.setAttribute("visibility", "visible");
+    this.cross.append(s("line", { class: "cross", x1: x, x2: x, y1: plotTop, y2: plotBottom }));
+
+    const seg = detection.segments.find((sg) => i >= sg.start && i < sg.end) ?? detection.segments[detection.segments.length - 1];
+    const repNo = seg.kind === "work" ? detection.reps.findIndex((r) => r.id === seg.id) + 1 : 0;
+
+    const rows: Array<{ name: string; value: string; color?: string }> = [];
+    for (const p of this.panels) {
+      if (p.key === "pace") {
+        const v = series.speed[i];
+        rows.push({ name: display.label, value: display.formatWithUnit(v), color: "var(--s1)" });
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(display.toAxis(v)), r: 4.5, fill: "var(--ink-2)" }));
+      } else if (p.key === "hr" && Number.isFinite(series.hr[i])) {
+        rows.push({ name: "Heart rate", value: `${Math.round(series.hr[i])} bpm`, color: "var(--s2)" });
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.hr[i]), r: 4.5, fill: "var(--s2)" }));
+      } else if (p.key === "ele" && Number.isFinite(series.altitude[i])) {
+        const k = units === "imperial" ? 3.28084 : 1;
+        rows.push({ name: "Elevation", value: `${Math.round(series.altitude[i] * k)} ${units === "imperial" ? "ft" : "m"}`, color: "var(--s3)" });
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.altitude[i] * k), r: 4.5, fill: "var(--s3)" }));
+      }
+    }
+    if (series.hasCadence && Number.isFinite(series.cadence[i]) && series.cadence[i] > 0) {
+      rows.push({ name: "Cadence", value: `${Math.round(series.cadence[i])} spm` });
+    }
+    if (series.hasAltitude && Math.abs(series.grade[i]) >= 0.005) {
+      rows.push({ name: "Grade", value: `${(series.grade[i] * 100).toFixed(1)} %` });
+    }
+
+    const head =
+      seg.kind === "work" ? `Rep ${repNo} · Work` : KIND_LABEL[seg.kind] ?? seg.kind;
+    this.tooltip.replaceChildren(
+      h("div", { class: "tt-head" }, head),
+      h("div", { class: "tt-sub" }, `${duration(i)} · ${fmtDistance(series.dist[i], units)}`),
+      ...rows.map((r) =>
+        h(
+          "div",
+          { class: "tt-row" },
+          r.color ? h("span", { class: "key", style: { borderColor: r.color } }) : h("span", { class: "key", style: { borderColor: "transparent" } }),
+          h("span", { class: "n" }, r.name),
+          h("span", { class: "v" }, r.value),
+        ),
+      ),
+    );
+    this.tooltip.hidden = false;
+    const y = pointer ? pointer.clientY - this.el.getBoundingClientRect().top : plotTop + 40;
+    this.placeTip(x, y);
+  }
+
+  private showTip(x: number, y: number, text: string) {
+    this.tooltip.replaceChildren(h("div", { class: "tt-head" }, text));
+    this.tooltip.hidden = false;
+    this.placeTip(x, y);
+  }
+
+  private placeTip(x: number, y: number) {
+    const w = this.tooltip.offsetWidth || 190;
+    const hgt = this.tooltip.offsetHeight || 90;
+    const total = this.el.clientWidth;
+    let left = x + 14;
+    if (left + w > total) left = x - w - 14;
+    left = Math.max(0, left);
+    const maxTop = (this.svg?.clientHeight ?? 400) - hgt;
+    const top = Math.max(0, Math.min(maxTop, y - hgt / 2));
+    this.tooltip.style.left = `${left}px`;
+    this.tooltip.style.top = `${top}px`;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// drawing helpers
+// ---------------------------------------------------------------------------------------------
+
+function pathOf(points: Array<[number, number]>): string {
+  if (!points.length) return "M0,0";
+  let d = `M${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`;
+  for (let i = 1; i < points.length; i++) d += `L${points[i][0].toFixed(1)},${points[i][1].toFixed(1)}`;
+  return d;
+}
+
+/**
+ * Average samples that fall on the same pixel column so a 2-hour activity is a
+ * few hundred points. Works for the time axis and for the distance axis (where
+ * paused seconds pile up on a single x).
+ */
+function bucketize(
+  i0: number,
+  i1: number,
+  plotW: number,
+  xOf: (i: number) => number,
+  px: (x: number) => number,
+  value: (i: number) => number,
+  toY: (v: number) => number,
+): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let curCol = NaN;
+  let sum = 0;
+  let cnt = 0;
+  let colX = 0;
+  const flush = () => {
+    if (cnt) out.push([colX, toY(sum / cnt)]);
+    sum = 0;
+    cnt = 0;
+  };
+  const step = Math.max(1, Math.floor((i1 - i0) / (plotW * 3)));
+  for (let i = i0; i <= i1; i += step) {
+    const v = value(i);
+    if (!Number.isFinite(v)) continue;
+    const x = px(xOf(i));
+    const col = Math.round(x);
+    if (col !== curCol) {
+      flush();
+      curCol = col;
+      colX = x;
+    }
+    sum += v;
+    cnt++;
+  }
+  flush();
+  return out;
+}
+
+function niceStep(raw: number, candidates: number[]): number {
+  for (const c of candidates) if (c >= raw) return c;
+  return candidates[candidates.length - 1];
+}
+
+function ticksBetween(lo: number, hi: number, step: number): number[] {
+  const out: number[] = [];
+  const start = Math.ceil(lo / step) * step;
+  for (let v = start; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}

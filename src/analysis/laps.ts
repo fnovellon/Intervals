@@ -106,7 +106,8 @@ export function detectLaps(
 
   // Optional snapping of boundaries to the signal.
   const shift = new Array<number>(usable.length).fill(0);
-  if (opts.snapLaps) {
+  // Structured-workout steps end exactly where the watch decided; only lap-button laps are snapped.
+  if (opts.snapLaps && !structured) {
     const level = Math.max(quantile(signal, 0.9), 1);
     const minStep = clamp(0.1 * level, 0.3, 1.2);
     for (let i = 1; i < usable.length; i++) {

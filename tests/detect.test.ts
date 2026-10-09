@@ -104,6 +104,17 @@ describe("signal detection", () => {
     expect(plainMatchesTruth).toBe(false);
   });
 
+  it("auto pace type switches to grade-adjusted pace on a hilly route only", () => {
+    const hills = synthesize({ steps: WORKOUTS.hills(), seed: 1, lapMode: "none" }).activity;
+    const auto = analyseActivity(hills, { mode: "signal" }).detection; // signal: "auto" is the default
+    expect(auto.signalUsed).toBe("gap");
+    expect(auto.reps).toHaveLength(6);
+    expect(auto.notes.join(" ")).toMatch(/Hilly route/);
+
+    const flat = synthesize({ steps: WORKOUTS["8x400"](), seed: 1, lapMode: "none" }).activity;
+    expect(analyseActivity(flat, { mode: "signal" }).detection.signalUsed).toBe("speed");
+  });
+
   it("reports no intervals for a steady run", () => {
     const { activity } = synthesize({
       steps: [{ kind: "warmup", distance: 8000, pace: 330 }],
@@ -176,6 +187,15 @@ describe("lap detection", () => {
     expect(err(snapped)).toBeLessThan(1.2);
   });
 
+  it("snaps hand-pressed laps by default but never moves structured-workout laps", () => {
+    const manual = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "manual", lapJitter: 3 });
+    const d = analyseActivity(manual.activity, { mode: "laps" }).detection; // snapLaps defaults to true
+    expect(d.segments.some((sg) => sg.snapShift !== undefined)).toBe(true);
+    const structured = synthesize({ steps: WORKOUTS["6x800"](), seed: 3, lapMode: "workout" });
+    const s = analyseActivity(structured.activity, { mode: "laps" }).detection;
+    expect(s.segments.every((sg) => sg.snapShift === undefined)).toBe(true);
+  });
+
   it("ignores automatic per-km laps and falls back to the pace signal", () => {
     const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "auto-km" });
     const { detection } = analyseActivity(activity, { mode: "auto" });
@@ -213,6 +233,27 @@ describe("summary", () => {
     expect(sum.workRestRatio).toBeGreaterThan(0.5);
     expect(sum.avgWorkHr).toBeGreaterThan(150);
     expect(sum.avgHrRecovery).toBeGreaterThan(5);
+  });
+});
+
+describe("workout description", () => {
+  const describeOf = (workout: keyof typeof WORKOUTS, seed = 1) =>
+    analyseActivity(synthesize({ steps: WORKOUTS[workout](), seed, lapMode: "none" }).activity, { mode: "signal" }).detection.summary!
+      .structure;
+
+  it("prefers metric track distances over mile fractions", () => {
+    expect(describeOf("8x400")).toBe("8 × 400 m / 75 s rest");
+    expect(describeOf("12x200")).toBe("12 × 200 m / 45 s rest");
+  });
+
+  it("describes time-based sessions by time", () => {
+    expect(describeOf("fartlek")).toBe("8 × 2 min / 60 s rest");
+    // hill boundaries are good to ~1.4 s, so a 100 s rest may be reported as 100 or 105 s
+    expect(describeOf("hills")).toMatch(/^6 × 90 s \/ 10[05] s rest$/);
+  });
+
+  it("writes pyramids as the sequence of distances", () => {
+    expect(describeOf("pyramid")).toBe("400 m · 800 m · 1.2 km · 800 m · 400 m / 2 min rest");
   });
 });
 

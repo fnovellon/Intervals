@@ -228,6 +228,22 @@ export function gradeCostFactor(g: number): number {
   return cost / 3.6;
 }
 
+/**
+ * Share of moving time spent on a noticeable slope (|grade| >= 4 %). Hill
+ * repeats put a large share there; a flat road run with a few bridges does not.
+ */
+export function hillShare(s: Series): number {
+  if (!s.hasAltitude) return 0;
+  let moving = 0;
+  let steep = 0;
+  for (let i = 0; i < s.n; i++) {
+    if (s.speed[i] < 1.5) continue;
+    moving++;
+    if (Math.abs(s.grade[i]) >= 0.04) steep++;
+  }
+  return moving > 0 ? steep / moving : 0;
+}
+
 /** Cumulative distance at an arbitrary (fractional) time, linearly interpolated. */
 export function distanceAt(s: Series, t: number): number {
   if (t <= 0) return s.dist[0];

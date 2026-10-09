@@ -39,7 +39,10 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
   const paused = pausedSeconds(series, start, end);
   const movingTime = Math.max(0, duration - paused);
   const distance = distanceAt(series, end) - distanceAt(series, start);
-  const avgSpeed = movingTime > 0 ? distance / movingTime : 0;
+  // A standing rest has almost no moving time; dividing by it would give a
+  // meaningless pace, so fall back to wall-clock time when mostly stopped.
+  const basis = paused > 0.5 * duration ? duration : movingTime;
+  const avgSpeed = basis > 0 ? distance / basis : 0;
 
   // Mean grade-adjusted speed over moving samples only.
   let gs = 0;
