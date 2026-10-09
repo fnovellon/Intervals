@@ -27,9 +27,11 @@ one-click demos.
 
 The build is one static file, so any static host works. For GitHub Pages:
 
-1. Merge this branch into `main`.
-2. In the repo go to **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab).
+1. In the repo go to **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. Go to **Settings → Environments → github-pages → Deployment branches and tags** and allow the
+   branch you deploy from (by default GitHub only allows the default branch).
+3. Push to a branch listed in `.github/workflows/pages.yml` (`main` and `claude/sleepy-tesla-h39nbp`),
+   or run the *Deploy to GitHub Pages* workflow from the Actions tab.
 
 It is then served at `https://<user>.github.io/Intervals/`. The workflow in
 `.github/workflows/pages.yml` runs the tests, builds, and deploys. The site is
