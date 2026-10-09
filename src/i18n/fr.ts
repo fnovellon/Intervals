@@ -148,13 +148,18 @@ export const fr: Record<Key, string> = {
   "tl.distance": "Distance",
   "tl.resetZoom": "Réinitialiser le zoom",
   "tl.hint":
-    "Cliquez sur un bloc ou une ligne pour l’inspecter · faites glisser les poignées de la bande pour déplacer une limite · glissez sur le graphique pour zoomer, double-clic pour réinitialiser · les flèches parcourent les données.",
+    "Cliquez sur un bloc ou une ligne pour l’inspecter · faites glisser une limite (ou utilisez «\u00A0Placer le début sur le graphique\u00A0») pour corriger le départ d’un effort · glissez sur le graphique pour zoomer, double-clic pour réinitialiser · les flèches parcourent les données, et déplacent une limite quand elle est sélectionnée.",
   "insp.rep": "Rép. {n}",
   "insp.typeAria": "Type de segment",
   "insp.mergePrev": "Fusionner ← préc.",
   "insp.mergeNext": "Fusionner suiv. →",
   "insp.split": "Couper en deux",
   "insp.reset": "Annuler les modifications",
+  "insp.placeStart": "Placer le début sur le graphique",
+  "insp.placeEnd": "Placer la fin sur le graphique",
+  "place.banner.start": "Cliquez sur le graphique à l’endroit où «\u00A0{name}\u00A0» doit commencer · Échap pour annuler",
+  "place.banner.end": "Cliquez sur le graphique à l’endroit où «\u00A0{name}\u00A0» doit se terminer · Échap pour annuler",
+  "place.cancel": "Annuler",
 
   // ---- chart --------------------------------------------------------------------------------
   "ch.aria":
@@ -166,6 +171,8 @@ export const fr: Record<Key, string> = {
   "ch.ele": "Altitude ({unit})",
   "ch.threshold": "seuil effort/récup. {v}",
   "ch.drag": "Faites glisser pour déplacer cette limite",
+  "ch.boundary":
+    "Limite entre «\u00A0{a}\u00A0» et «\u00A0{b}\u00A0» à {time}. Les flèches la déplacent de 0,5 s, Maj de 5 s, Alt de 0,1 s.",
   "tt.rep": "Rép. {n} · Effort",
   "tt.hr": "Fréq. cardiaque",
   "tt.ele": "Altitude",

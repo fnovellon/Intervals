@@ -23,6 +23,8 @@ const SCENARIOS: Scenario[] = [
   { name: "heavy smoothing", workout: "6x800", synth: { deviceSmoothing: 3.5 } },
   { name: "short reps 200", workout: "12x200", synth: {} },
   { name: "pyramid", workout: "pyramid", synth: {} },
+  // the athlete takes ~30 s to get up to speed (time constant 10 s instead of ~2 s)
+  { name: "slow acceleration", workout: "8x400", synth: { athleteTau: 10 }, maxP95: 3.5 },
   { name: "fartlek (time)", workout: "fartlek", synth: { gpsNoise: 0.2 } },
   { name: "hills (GAP)", workout: "hills", synth: { truthAt: "command" }, signal: "gap", maxP95: 4 },
   { name: "standing rest/auto-pause", workout: "6x800", synth: { autoPause: true } },

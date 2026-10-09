@@ -18,6 +18,8 @@ export interface ChartProps {
   selected: number | null;
   /** Draw the work/rest threshold line (only meaningful for plain pace). */
   showThreshold: boolean;
+  /** When set, the next click on the chart places boundary `index` there. */
+  placing: { index: number } | null;
 }
 
 export interface ChartHandlers {
@@ -25,6 +27,8 @@ export interface ChartHandlers {
   onZoom(range: [number, number] | null): void;
   /** Boundary between segments[index - 1] and segments[index] moved to `time`. */
   onMoveBoundary(index: number, time: number): void;
+  /** The user clicked the chart while placing a boundary. */
+  onPlace(time: number): void;
 }
 
 const M = { left: 60, right: 14, top: 2 };
@@ -65,6 +69,8 @@ export class TimelineChart {
   };
   private panels: Panel[] = [];
   private cross?: SVGGElement;
+  /** Boundary whose handle should regain keyboard focus after the next render. */
+  private refocus: number | null = null;
 
   constructor(private handlers: ChartHandlers) {
     this.tooltip = h("div", { class: "tooltip", hidden: true, role: "status" });
@@ -86,6 +92,7 @@ export class TimelineChart {
   render(props: ChartProps) {
     this.props = props;
     this.el.setAttribute("aria-label", t("ch.aria"));
+    this.el.toggleAttribute("data-placing", !!props.placing);
     const { series, detection, display } = props;
     const width = this.width;
     const hasHr = series.hasHr;
@@ -312,15 +319,6 @@ export class TimelineChart {
     }
     svg.append(stripG);
 
-    // boundary handles
-    const handleG = s("g");
-    for (let i = 1; i < segs.length; i++) {
-      const t = segs[i].start;
-      if (t <= t0 || t >= t1) continue;
-      handleG.append(this.makeHandle(i, pxT(t), stripTop, plotBottom, props));
-    }
-    svg.append(handleG);
-
     // ---- crosshair + overlay ----------------------------------------------------------------------
     this.cross = s("g", { visibility: "hidden" });
     svg.append(this.cross);
@@ -330,10 +328,24 @@ export class TimelineChart {
     this.attachOverlay(overlay, brush);
     svg.append(overlay);
 
+    // ---- boundary handles: drawn last so they sit above the overlay and can be grabbed anywhere ----
+    const handleG = s("g");
+    for (let i = 1; i < segs.length; i++) {
+      const bt = segs[i].start;
+      if (bt <= t0 || bt >= t1) continue;
+      handleG.append(this.makeHandle(i, pxT(bt), stripTop, plotBottom, props));
+    }
+    svg.append(handleG);
+
     if (this.svg) this.svg.replaceWith(svg);
     else this.el.prepend(svg);
     this.svg = svg;
     if (this.cursor !== null) this.showCursor(this.cursor, null);
+    if (this.refocus !== null) {
+      const handle = svg.querySelector<SVGGElement>(`.handle[data-index="${this.refocus}"]`);
+      this.refocus = null;
+      handle?.focus({ preventScroll: true });
+    }
   }
 
   // ------------------------------------------------------------------------------------------
@@ -374,13 +386,34 @@ export class TimelineChart {
   }
 
   private makeHandle(index: number, x: number, top: number, bottom: number, props: ChartProps): SVGGElement {
-    const g = s("g", { class: "handle" });
+    const segs = props.detection.segments;
+    const before = segs[index - 1];
+    const after = segs[index];
+    const minT = before.start + MIN_SEG_S;
+    const maxT = after.end - MIN_SEG_S;
+    const origin = after.start;
+    const nameOf = (sg: Segment) => (sg.kind === "work" ? t("insp.rep", { n: props.detection.reps.findIndex((r) => r.id === sg.id) + 1 }) : kindLabel(sg.kind));
+
+    const g = s("g", {
+      class: "handle",
+      tabindex: "0",
+      role: "slider",
+      "data-index": String(index),
+      "aria-label": t("ch.boundary", { a: nameOf(before), b: nameOf(after), time: duration(origin, 1) }),
+      "aria-valuemin": minT.toFixed(1),
+      "aria-valuemax": maxT.toFixed(1),
+      "aria-valuenow": origin.toFixed(1),
+      "aria-valuetext": duration(origin, 1),
+    });
+    // A visible line and grip at all times, so the boundary is obviously something you can grab.
     g.append(s("line", { class: "handle-line", x1: x, x2: x, y1: top, y2: bottom }));
-    g.append(s("circle", { class: "handle-knob", cx: x, cy: top + STRIP_H / 2, r: 5 }));
-    const hit = s("rect", { class: "handle-hit", x: x - 8, y: top - 2, width: 16, height: STRIP_H + 4 });
+    g.append(s("rect", { class: "handle-grip", x: x - 4, y: top + STRIP_H / 2 - 9, width: 8, height: 18, rx: 4 }));
+    // The grab area runs the full height of the chart, not only the strip.
+    const hit = s("rect", { class: "handle-hit", x: x - 9, y: top - 2, width: 18, height: bottom - top + 2 });
+    hit.append(s("title", {}, t("ch.drag")));
     g.append(hit);
-    const title = s("title", {}, t("ch.drag"));
-    hit.append(title);
+
+    const paceAt = (time: number) => props.display.formatWithUnit(props.series.speed[Math.min(props.series.n - 1, Math.max(0, Math.round(time)))]);
 
     hit.addEventListener("pointerdown", (ev) => {
       ev.stopPropagation();
@@ -388,18 +421,12 @@ export class TimelineChart {
       hit.setPointerCapture(ev.pointerId);
       g.classList.add("drag");
       this.hideCursor();
-      const segs = props.detection.segments;
-      const minT = segs[index - 1].start + MIN_SEG_S;
-      const maxT = segs[index].end - MIN_SEG_S;
-      let current = segs[index].start;
+      let current = origin;
       const move = (e: PointerEvent) => {
         current = Math.min(maxT, Math.max(minT, this.timeAtClientX(e.clientX)));
         const nx = this.pxOfTime(current);
-        g.querySelector(".handle-line")!.setAttribute("x1", String(nx));
-        g.querySelector(".handle-line")!.setAttribute("x2", String(nx));
-        g.querySelector(".handle-knob")!.setAttribute("cx", String(nx));
-        hit.setAttribute("x", String(nx - 8));
-        this.showTip(nx, top + STRIP_H, `${duration(current, 1)} · ${fmtDistance(distanceAt(props.series, current), props.units)}`);
+        g.setAttribute("transform", `translate(${nx - x} 0)`);
+        this.showTip(nx, top + STRIP_H, `${duration(current, 1)} · ${fmtDistance(distanceAt(props.series, current), props.units)} · ${paceAt(current)}`);
       };
       const up = () => {
         hit.removeEventListener("pointermove", move);
@@ -407,11 +434,28 @@ export class TimelineChart {
         hit.removeEventListener("pointercancel", up);
         g.classList.remove("drag");
         this.tooltip.hidden = true;
-        if (Math.abs(current - segs[index].start) > 0.05) this.handlers.onMoveBoundary(index, current);
+        if (Math.abs(current - origin) > 0.05) {
+          this.refocus = index;
+          this.handlers.onMoveBoundary(index, current);
+        }
       };
       hit.addEventListener("pointermove", move);
       hit.addEventListener("pointerup", up);
       hit.addEventListener("pointercancel", up);
+    });
+
+    // Keyboard: arrows nudge by 0.5 s, Shift 5 s, Alt 0.1 s.
+    g.addEventListener("keydown", (ev) => {
+      const key = (ev as KeyboardEvent).key;
+      if (key !== "ArrowLeft" && key !== "ArrowRight") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const e = ev as KeyboardEvent;
+      const step = e.altKey ? 0.1 : e.shiftKey ? 5 : 0.5;
+      const next = Math.min(maxT, Math.max(minT, +(origin + (key === "ArrowRight" ? step : -step)).toFixed(2)));
+      if (next === origin) return;
+      this.refocus = index;
+      this.handlers.onMoveBoundary(index, next);
     });
     return g;
   }
@@ -422,7 +466,7 @@ export class TimelineChart {
 
     overlay.addEventListener("pointermove", (e) => {
       const t = this.timeAtClientX(e.clientX);
-      if (dragStart !== null) {
+      if (dragStart !== null && !this.props.placing) {
         const x = this.localX(e.clientX);
         if (Math.abs(x - dragStart) > 4) moved = true;
         if (moved) {
@@ -443,6 +487,14 @@ export class TimelineChart {
     });
     const finish = (e: PointerEvent) => {
       if (dragStart === null) return;
+      if (this.props.placing) {
+        // Placing a boundary: this click chooses the time, nothing else.
+        dragStart = null;
+        moved = false;
+        this.refocus = null;
+        this.handlers.onPlace(this.timeAtClientX(e.clientX));
+        return;
+      }
       const a = this.timeAtX(dragStart);
       const b = this.timeAtClientX(e.clientX);
       brush.setAttribute("visibility", "hidden");
@@ -546,7 +598,7 @@ export class TimelineChart {
     }
     clear(this.cross);
     this.cross.setAttribute("visibility", "visible");
-    this.cross.append(s("line", { class: "cross", x1: x, x2: x, y1: plotTop, y2: plotBottom }));
+    this.cross.append(s("line", { class: this.props.placing ? "place-line" : "cross", x1: x, x2: x, y1: plotTop, y2: plotBottom }));
 
     const seg = detection.segments.find((sg) => i >= sg.start && i < sg.end) ?? detection.segments[detection.segments.length - 1];
     const repNo = seg.kind === "work" ? detection.reps.findIndex((r) => r.id === seg.id) + 1 : 0;

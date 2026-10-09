@@ -539,30 +539,64 @@ input {
   fill: transparent;
   cursor: pointer;
 }
+.chart .handle {
+  outline: none;
+}
 .chart .handle-hit {
   fill: transparent;
   cursor: col-resize;
 }
+/* Boundaries are always visible: a hairline through the panels and a grip on the strip. */
 .chart .handle-line {
   stroke: var(--ink);
   stroke-width: 1;
-  opacity: 0;
+  opacity: 0.32;
   pointer-events: none;
 }
-.chart .handle:hover .handle-line,
-.chart .handle.drag .handle-line {
-  opacity: 0.55;
-}
-.chart .handle-knob {
+.chart .handle-grip {
   fill: var(--surface);
   stroke: var(--ink);
   stroke-width: 1.5;
-  opacity: 0;
   pointer-events: none;
 }
-.chart .handle:hover .handle-knob,
-.chart .handle.drag .handle-knob {
-  opacity: 1;
+.chart .handle:hover .handle-line,
+.chart .handle.drag .handle-line,
+.chart .handle:focus-visible .handle-line {
+  opacity: 0.85;
+  stroke-width: 1.5;
+}
+.chart .handle:hover .handle-grip,
+.chart .handle.drag .handle-grip,
+.chart .handle:focus-visible .handle-grip {
+  fill: var(--s1);
+  stroke: var(--s1);
+}
+.chart .handle:focus-visible .handle-grip {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+/* While placing a boundary the ghost line follows the pointer. */
+.chart .place-line {
+  stroke: var(--s1);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.chart-wrap[data-placing] .overlay {
+  cursor: copy;
+}
+.placing-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--band-work-sel);
+  border: 1px solid var(--s1);
+  font-size: 13.5px;
+}
+.placing-banner .grow {
+  flex: 1;
 }
 .chart .cross {
   stroke: var(--ink);

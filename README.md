@@ -58,8 +58,15 @@ public, but files you drop on it are still analysed only in the visitor's browse
 
 "Source" and "Pace type" can be forced in the settings row, and the work/rest
 threshold, sensitivity and minimum rep / rest length are adjustable. Every
-boundary can be dragged on the strip above the chart; segments can be re-typed,
-merged or split, and everything recomputes. Results export to CSV.
+boundary can be corrected with the mouse or keyboard, and everything recomputes:
+
+- **Drag** a boundary (the line and grip are always visible; grab it anywhere along its height).
+  Zoom in first (drag across the chart) for sub-second control.
+- **Place on chart**: select a rep, press *Place start on chart* / *Place end on chart*, then
+  click where it should begin or end. A guide line follows the pointer and the tooltip shows the
+  pace under it, which makes it easy to pick the middle of a slow ramp. Esc cancels.
+- **Keyboard**: focus a boundary (Tab) and press ← / → to move it by 0.5 s (Shift 5 s, Alt 0.1 s).
+- Segments can also be re-typed, merged or split. Results export to CSV.
 
 ## How the detection works
 

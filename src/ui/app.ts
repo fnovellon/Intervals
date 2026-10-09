@@ -41,6 +41,8 @@ interface State {
   error?: Msg;
   /** Set for built-in simulated sessions so the name follows the language. */
   demoId?: string;
+  /** The next click on the chart moves this edge of this segment. */
+  placing: { id: number; edge: "start" | "end" } | null;
 }
 
 const DEMOS: Array<{
@@ -69,6 +71,7 @@ export function mountApp(root: HTMLElement) {
     tableAll: true,
     edited: false,
     loading: false,
+    placing: null,
   };
 
   // ------------------------------------------------------------------ static shell
@@ -123,6 +126,9 @@ export function mountApp(root: HTMLElement) {
     }
   }
   onLocaleChange(renderAll);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cancelPlacing();
+  });
 
   fileInput.addEventListener("change", () => {
     const f = fileInput.files?.[0];
@@ -146,7 +152,21 @@ export function mountApp(root: HTMLElement) {
   const chart = new TimelineChart({
     onSelect: (id) => {
       state.selected = id;
+      state.placing = null;
       renderResults();
+    },
+    onPlace: (time) => {
+      const p = state.placing;
+      if (!p) return;
+      const index = p.edge === "start" ? p.id : p.id + 1;
+      const specs = specsOf(state.detection!);
+      if (index < 1 || index >= specs.length) return;
+      // keep at least MIN_SEG seconds on either side, like dragging does
+      const at = Math.min(specs[index].end - 2, Math.max(specs[index - 1].start + 2, time));
+      specs[index - 1] = { ...specs[index - 1], end: at, source: "manual" };
+      specs[index] = { ...specs[index], start: at, source: "manual" };
+      state.placing = null;
+      applyEdit(specs, p.id);
     },
     onZoom: (z) => {
       state.zoom = z;
@@ -217,6 +237,7 @@ export function mountApp(root: HTMLElement) {
     state.options = { ...DEFAULT_OPTIONS, ...optionOverrides };
     state.zoom = null;
     state.selected = null;
+    state.placing = null;
     state.edited = false;
     state.loading = false;
     state.error = undefined;
@@ -232,6 +253,7 @@ export function mountApp(root: HTMLElement) {
     state.detection = detect(state.activity, state.series, state.options);
     state.edited = false;
     state.selected = null;
+    state.placing = null;
     renderNotices();
     renderResults();
   }
@@ -253,6 +275,18 @@ export function mountApp(root: HTMLElement) {
     state.detection = rebuild(state.series!, specs, state.detection!);
     state.edited = true;
     state.selected = select !== null && select < specs.length ? select : null;
+    renderResults();
+  }
+
+  function startPlacing(id: number, edge: "start" | "end") {
+    state.placing = { id, edge };
+    renderResults();
+    chart.el.scrollIntoView({ block: "nearest" });
+  }
+
+  function cancelPlacing() {
+    if (!state.placing) return;
+    state.placing = null;
     renderResults();
   }
 
@@ -512,6 +546,7 @@ export function mountApp(root: HTMLElement) {
       zoom: state.zoom,
       selected: state.selected,
       showThreshold: d.signalUsed === "speed",
+      placing: state.placing ? { index: state.placing.edge === "start" ? state.placing.id : state.placing.id + 1 } : null,
     });
   }
 
@@ -536,7 +571,21 @@ export function mountApp(root: HTMLElement) {
       state.zoom ? h("button", { class: "btn small", on: { click: () => { state.zoom = null; renderResults(); } } }, t("tl.resetZoom")) : null,
       xSeg,
     );
-    const card = h("section", { class: "card" }, head, chart.el);
+    const card = h("section", { class: "card" }, head);
+    const placing = state.placing ? d.segments[state.placing.id] : undefined;
+    if (state.placing && placing) {
+      const name = placing.kind === "work" ? t("insp.rep", { n: d.reps.findIndex((r) => r.id === placing.id) + 1 }) : kindLabel(placing.kind);
+      card.append(
+        h(
+          "div",
+          { class: "placing-banner", role: "status" },
+          h("span", {}, t(state.placing.edge === "start" ? "place.banner.start" : "place.banner.end", { name })),
+          h("span", { class: "grow" }),
+          h("button", { class: "btn small", on: { click: cancelPlacing } }, t("place.cancel")),
+        ),
+      );
+    }
+    card.append(chart.el);
     const sel = state.selected !== null ? d.segments[state.selected] : undefined;
     if (sel) card.append(inspector(sel, d, sd));
     card.append(
@@ -561,6 +610,8 @@ export function mountApp(root: HTMLElement) {
       h("span", {}, `${duration(sg.start, 1)} → ${duration(sg.end, 1)} · ${duration(sg.duration, 1)} · ${fmtDistance(sg.distance, state.units)} · ${sd.formatWithUnit(sg.avgSpeed)}`),
       h("span", { class: "grow" }),
       kind,
+      h("button", { class: "btn small", disabled: sg.id === 0, on: { click: () => startPlacing(sg.id, "start") } }, t("insp.placeStart")),
+      h("button", { class: "btn small", disabled: sg.id === d.segments.length - 1, on: { click: () => startPlacing(sg.id, "end") } }, t("insp.placeEnd")),
       h("button", { class: "btn small", disabled: sg.id === 0, on: { click: () => merge(sg.id, -1) } }, t("insp.mergePrev")),
       h("button", { class: "btn small", disabled: sg.id === d.segments.length - 1, on: { click: () => merge(sg.id, 1) } }, t("insp.mergeNext")),
       h("button", { class: "btn small", disabled: sg.duration < 2 * MIN_SPLIT, on: { click: () => split(sg.id) } }, t("insp.split")),

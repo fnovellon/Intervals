@@ -141,13 +141,18 @@ export const en = {
   "tl.distance": "Distance",
   "tl.resetZoom": "Reset zoom",
   "tl.hint":
-    "Click a block or row to inspect it · drag the handles on the strip to move a boundary · drag across the chart to zoom, double-click to reset · arrow keys step through the data.",
+    "Click a block or row to inspect it · drag a boundary (or use “Place start on chart”) to fix where a rep begins · drag across the chart to zoom, double-click to reset · arrow keys step through the data, and move a boundary when it is focused.",
   "insp.rep": "Rep {n}",
   "insp.typeAria": "Segment type",
   "insp.mergePrev": "Merge ← prev",
   "insp.mergeNext": "Merge next →",
   "insp.split": "Split in half",
   "insp.reset": "Reset edits",
+  "insp.placeStart": "Place start on chart",
+  "insp.placeEnd": "Place end on chart",
+  "place.banner.start": "Click on the chart where “{name}” should start · Esc to cancel",
+  "place.banner.end": "Click on the chart where “{name}” should end · Esc to cancel",
+  "place.cancel": "Cancel",
 
   // ---- chart --------------------------------------------------------------------------------
   "ch.aria":
@@ -158,6 +163,8 @@ export const en = {
   "ch.ele": "Elevation ({unit})",
   "ch.threshold": "work/rest threshold {v}",
   "ch.drag": "Drag to move this boundary",
+  "ch.boundary":
+    "Boundary between “{a}” and “{b}” at {time}. Arrow keys move it by 0.5 s, Shift by 5 s, Alt by 0.1 s.",
   "tt.rep": "Rep {n} · Work",
   "tt.hr": "Heart rate",
   "tt.ele": "Elevation",
