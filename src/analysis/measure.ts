@@ -44,15 +44,19 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
   const basis = paused > 0.5 * duration ? duration : movingTime;
   const avgSpeed = basis > 0 ? distance / basis : 0;
 
-  // Mean grade-adjusted speed over moving samples only.
+  // Grade-adjusted speed = the segment's own speed (distance / time) times the average effect of the
+  // slope, weighted by distance covered. Built this way it equals the plain speed exactly on flat
+  // ground; averaging the per-second device speeds instead would differ from distance / time by
+  // 1-2 s/km even with no slope at all (smoothed speed, whole-sample edges).
   let gs = 0;
-  let gc = 0;
+  let vs = 0;
   for (let i = lo; i < hi && i < series.n; i++) {
     if (!series.paused[i]) {
       gs += series.gapSpeed[i];
-      gc++;
+      vs += series.speed[i];
     }
   }
+  const slopeFactor = vs > 0 ? gs / vs : 1;
 
   // Best 5 s average speed (from the distance curve, so it is not smoothed twice).
   let maxSpeed = 0;
@@ -72,7 +76,7 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
     movingTime,
     distance,
     avgSpeed,
-    avgGapSpeed: gc ? gs / gc : avgSpeed,
+    avgGapSpeed: avgSpeed * slopeFactor,
     maxSpeed,
   };
 

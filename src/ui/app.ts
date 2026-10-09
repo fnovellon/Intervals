@@ -717,7 +717,9 @@ export function mountApp(root: HTMLElement) {
       { key: "dist", label: t("col.dist", { unit: bigDistance ? (units === "imperial" ? "mi" : "km") : distanceUnitShort(0, units) }), cell: (s) => (bigDistance ? nf(units === "imperial" ? s.distance / 1609.344 : s.distance / 1000, 2) : distanceShort(s.distance, units)) },
       { key: "pace", label: t("col.pace", { label: sd.label, unit: sd.unit }), cell: (s) => sd.format(s.avgSpeed) },
     ];
-    if (series.hasAltitude) cols.push({ key: "gap", label: t("col.gap", { unit: sd.unit }), cell: (s) => (sd.isPace && s.kind !== "rest" ? sd.format(s.avgGapSpeed) : "–") });
+    // On flat ground GAP equals the pace, so the column would only repeat it.
+    const gapMatters = series.hasAltitude && rows.some((r) => r.avgSpeed > 0.3 && Math.abs(r.avgGapSpeed - r.avgSpeed) / r.avgSpeed >= GAP_VISIBLE_DIFF);
+    if (gapMatters) cols.push({ key: "gap", label: t("col.gap", { unit: sd.unit }), cell: (s) => (sd.isPace && s.kind !== "rest" ? sd.format(s.avgGapSpeed) : "–") });
     cols.push({ key: "max", label: t("col.best"), cell: (s) => (s.kind === "work" ? sd.format(s.maxSpeed) : "–") });
     if (series.hasHr) {
       cols.push({ key: "hr", label: t("col.hr"), cell: (s) => bpm(s.avgHr) });
@@ -814,6 +816,9 @@ export function mountApp(root: HTMLElement) {
 }
 
 const MIN_SPLIT = 5;
+
+/** Show the grade-adjusted column only when it differs from the pace by at least this fraction somewhere. */
+const GAP_VISIBLE_DIFF = 0.015;
 
 const HEADER_TITLE_KEYS: Record<string, Key> = {
   gap: "col.gap.title",

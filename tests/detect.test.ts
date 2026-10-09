@@ -236,6 +236,39 @@ describe("summary", () => {
   });
 });
 
+describe("grade-adjusted pace", () => {
+  const worst = (flat: boolean, altitudeNoise = 0) => {
+    let max = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const { activity } = synthesize({ steps: WORKOUTS["6x800"](), seed, lapMode: "none" });
+      let rng = seed * 7919;
+      const rnd = () => ((rng = (rng * 1664525 + 1013904223) >>> 0) / 4294967296 - 0.5) * 2;
+      activity.records.forEach((r) => {
+        if (flat && r.altitude !== undefined) r.altitude = 120 + altitudeNoise * rnd();
+      });
+      for (const sg of analyseActivity(activity, { mode: "signal" }).detection.segments) {
+        if (sg.avgSpeed < 0.5) continue;
+        max = Math.max(max, Math.abs(1000 / sg.avgGapSpeed - 1000 / sg.avgSpeed));
+      }
+    }
+    return max;
+  };
+
+  it("equals the pace on a perfectly flat route", () => {
+    expect(worst(true, 0)).toBeLessThan(0.05); // s/km
+  });
+
+  it("stays within a second per km of the pace when the altimeter is noisy but the route is flat", () => {
+    expect(worst(true, 0.4)).toBeLessThan(1);
+  });
+
+  it("differs clearly from the pace on a real hill", () => {
+    const { activity } = synthesize({ steps: WORKOUTS.hills(), seed: 1, lapMode: "none" });
+    const rep = analyseActivity(activity, { mode: "signal" }).detection.reps[0];
+    expect(1000 / rep.avgSpeed - 1000 / rep.avgGapSpeed).toBeGreaterThan(60); // climbing: GAP much faster
+  });
+});
+
 describe("workout description", () => {
   const describeOf = (workout: keyof typeof WORKOUTS, seed = 1) =>
     analyseActivity(synthesize({ steps: WORKOUTS[workout](), seed, lapMode: "none" }).activity, { mode: "signal" }).detection.summary!
