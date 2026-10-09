@@ -76,7 +76,7 @@ export function assemble(
   meta: Pick<Detection, "modeUsed" | "signalUsed" | "modeReason" | "notes" | "options"> &
     Partial<Pick<Detection, "threshold" | "separation">>,
 ): Detection {
-  const segments = measureAll(series, specs);
+  const segments = measureAll(series, specs, meta.options.paceBasis);
   const reps = segments.filter((s) => s.kind === "work");
   return {
     ...meta,

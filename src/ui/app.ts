@@ -1,7 +1,7 @@
 import { detect, rebuild } from "../analysis/detect";
 import { structureText } from "../analysis/summary";
 import { AppError, getLocale, LOCALES, msg, nf, onLocaleChange, pct, renderMsg, setLocale, t, tn, type Key, type Locale, type Msg } from "../i18n";
-import type { DetectMode, DetectOptions, Detection, Segment, SegmentKind, SegmentSpec, SignalKind } from "../analysis/model";
+import type { DetectMode, DetectOptions, Detection, PaceBasis, Segment, SegmentKind, SegmentSpec, SignalKind } from "../analysis/model";
 import { DEFAULT_OPTIONS, EDGE_PRESETS } from "../analysis/model";
 import { buildSeries, type Series } from "../analysis/timeseries";
 import { parseFit } from "../fit/parse";
@@ -255,6 +255,15 @@ export function mountApp(root: HTMLElement) {
     state.selected = null;
     state.placing = null;
     renderNotices();
+    renderResults();
+  }
+
+  /** Switch where the paces come from. Only the numbers change, so manual edits are kept. */
+  function setPaceBasis(basis: PaceBasis) {
+    state.options.paceBasis = basis;
+    const d = state.detection;
+    if (!d || !state.series) return;
+    state.detection = rebuild(state.series, specsOf(d), { ...d, options: { ...d.options, paceBasis: basis } });
     renderResults();
   }
 
@@ -526,6 +535,9 @@ export function mountApp(root: HTMLElement) {
       { class: "toolbar", role: "region", "aria-label": t("tb.aria") },
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.source")), segmented<DetectMode>([["auto", t("tb.auto")], ["laps", t("tb.laps")], ["signal", t("tb.signal")]], () => state.options.mode, (v) => { state.options.mode = v; recompute(); })),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.paceType")), segmented<SignalKind>([["auto", t("tb.auto")], ["speed", sd.isPace ? t("tb.pace") : t("tb.speed")], ["gap", t("tb.gap")]], () => state.options.signal, (v) => { state.options.signal = v; recompute(); })),
+      ...(state.series?.speedFromDevice
+        ? [h("div", { class: "field", title: t("tb.basisTitle") }, h("span", { class: "lbl" }, t("tb.basis")), segmented<PaceBasis>([["distance", t("tb.basisDist")], ["device", t("tb.basisDev")]], () => state.options.paceBasis, setPaceBasis))]
+        : []),
       h("div", { class: "field", title: t("tb.sensitivityTitle") }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, sens, sensLabel)),
       numberField(t("tb.minRep"), "minWorkSec", 3, 600, t("tb.minRepTitle")),
       numberField(t("tb.minRest"), "minRestSec", 2, 600, t("tb.minRestTitle")),
@@ -558,6 +570,7 @@ export function mountApp(root: HTMLElement) {
     const noteParts = [
       t(d.modeUsed === "laps" ? "res.fromLaps" : "res.fromSignal", { reason: d.modeReason }),
       d.signalUsed === "gap" ? t("res.gapNote") : "",
+      d.options.paceBasis === "device" && series.speedFromDevice ? t("res.basisDevice") : "",
       state.edited ? t("res.edited") : "",
       ...d.notes.filter((n) => INFO_NOTES.has(n.key)).map((n) => renderMsg(n)),
     ].filter(Boolean);
@@ -609,7 +622,8 @@ export function mountApp(root: HTMLElement) {
       xMode: state.xMode,
       zoom: state.zoom,
       selected: state.selected,
-      showThreshold: d.signalUsed === "speed",
+      // The threshold is in recorded-speed units: only meaningful when the plotted line is that speed too.
+      showThreshold: d.signalUsed === "speed" && (d.options.paceBasis === "device" || !series.speedFromDevice || Math.abs(series.speedRatio - 1) < 0.03),
       placing: state.placing ? { index: state.placing.edge === "start" ? state.placing.id : state.placing.id + 1 } : null,
     });
   }
@@ -618,7 +632,11 @@ export function mountApp(root: HTMLElement) {
     const legend = h(
       "div",
       { class: "legend" },
-      h("span", { class: "item" }, h("span", { class: "key-line", style: { color: "var(--muted)" } }), t(sd.isPace ? "tl.recordedPace" : "tl.recordedSpeed")),
+      h("span", { class: "item" }, h("span", { class: "key-line", style: { color: "var(--muted)" } }), t(
+        d.options.paceBasis === "distance" && state.series?.speedFromDevice
+          ? sd.isPace ? "tl.distancePace" : "tl.distanceSpeed"
+          : sd.isPace ? "tl.recordedPace" : "tl.recordedSpeed",
+      )),
       h("span", { class: "item" }, h("span", { class: "key-line", style: { color: "var(--s1)" } }), t("tl.avg")),
       h("span", { class: "item" }, h("span", { class: "key-wash", style: { background: "var(--band-work)" } }), t("tl.work")),
     );
@@ -668,21 +686,15 @@ export function mountApp(root: HTMLElement) {
     }
     kind.addEventListener("change", () => setKind(sg.id, kind.value as SegmentKind));
 
-    // Why can the table and the chart differ? Show both numbers whenever they do.
-    const series = state.series!;
-    let sum = 0;
-    let count = 0;
-    for (let i = Math.ceil(sg.start); i < Math.ceil(sg.end) && i < series.n; i++) {
-      if (!series.paused[i]) {
-        sum += series.speed[i];
-        count++;
-      }
-    }
-    const chartV = count ? sum / count : 0;
-    const rel = chartV > 0.5 && sg.avgSpeed > 0.5 ? (sg.avgSpeed - chartV) / chartV : 0;
+    // The two ways to read a pace can differ a lot (smoothed watch speed, speed and distance from different
+    // sensors): show both whenever they do, whichever one the table is using.
     const checks: string[] = [];
-    if (Math.abs(rel) >= PACE_CHECK_DIFF) {
-      checks.push(t(rel > 0 ? "insp.paceCheckFaster" : "insp.paceCheckSlower", { table: sd.formatWithUnit(sg.avgSpeed), chart: sd.formatWithUnit(chartV), pct: pct(Math.abs(rel) * 100, 1) }));
+    const series = state.series!;
+    if (series.speedFromDevice && sg.distSpeed > 0.5 && sg.deviceSpeed > 0.5) {
+      const rel = Math.abs(sg.deviceSpeed - sg.distSpeed) / sg.distSpeed;
+      if (rel >= PACE_CHECK_DIFF) {
+        checks.push(t("insp.basisBoth", { dist: sd.formatWithUnit(sg.distSpeed), dev: sd.formatWithUnit(sg.deviceSpeed), pct: pct(rel * 100, 1) }));
+      }
     }
     if (sg.paused >= 1 && sg.paused <= 0.5 * sg.duration) checks.push(t("insp.paused", { n: Math.round(sg.paused) }));
 

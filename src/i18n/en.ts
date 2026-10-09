@@ -51,9 +51,9 @@ export const en = {
   "note.speedFromDist": "Speed derived from distance (no device speed in file).",
   "note.lag": "Device speed trails the distance curve by about {lag} s; boundaries were compensated.",
   "note.speedLower":
-    "In this file the speed recorded by the watch is on average {pct} % lower than the speed implied by its own distance, so the plotted pace looks slower than the table. The table uses distance ÷ time, like the lap table in Garmin Connect.",
+    "In this file the speed recorded by the watch (what its screen shows while you run) is on average {pct} % lower than the speed implied by its own distance. By default the app uses distance ÷ time, like the lap table in Garmin Connect; “Pace from” switches to the watch speed.",
   "note.speedHigher":
-    "In this file the speed recorded by the watch is on average {pct} % higher than the speed implied by its own distance, so the plotted pace looks faster than the table. The table uses distance ÷ time, like the lap table in Garmin Connect.",
+    "In this file the speed recorded by the watch (what its screen shows while you run) is on average {pct} % higher than the speed implied by its own distance. By default the app uses distance ÷ time, like the lap table in Garmin Connect; “Pace from” switches to the watch speed.",
   "note.hilly": "Hilly route: intervals were segmented on grade-adjusted pace.",
   "note.noAltitude": "No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.",
   "note.lapUnavailable": "Lap mode unavailable ({reason}) — used the pace signal instead.",
@@ -118,6 +118,11 @@ export const en = {
   "tb.snap": "Snap laps to pace",
   "tb.snapTitle":
     "Move boundaries of laps you pressed by hand to the nearest real change of pace. Structured-workout laps are never moved.",
+  "tb.basis": "Pace from",
+  "tb.basisDist": "Distance ÷ time",
+  "tb.basisDev": "Watch speed",
+  "tb.basisTitle":
+    "Where the paces come from. Distance ÷ time: distance covered over time, like the lap table in Garmin Connect. Watch speed: the speed the watch recorded second by second, like its screen while you run. That speed is smoothed over several seconds, so on short reps it falls short of your real pace.",
   "tb.units": "Units",
   "tb.km": "km",
   "tb.mi": "mi",
@@ -128,6 +133,7 @@ export const en = {
   "res.fromSignal": "Detected from the pace signal. {reason}",
   "res.gapNote": "Hard/easy was judged on grade-adjusted pace (effort on flat ground), not raw pace.",
   "res.edited": "Edited manually.",
+  "res.basisDevice": "Paces are the speed recorded by the watch, not distance ÷ time.",
   "hero.kicker": "Detected workout",
   "hero.sub": "{count} work intervals · {dist} hard running in {time}",
   "hero.none": "No intervals detected",
@@ -160,6 +166,8 @@ export const en = {
   "tl.title": "Timeline",
   "tl.recordedPace": "Recorded pace",
   "tl.recordedSpeed": "Recorded speed",
+  "tl.distancePace": "Pace from distance",
+  "tl.distanceSpeed": "Speed from distance",
   "tl.avg": "Interval average",
   "tl.work": "Work interval",
   "tl.time": "Time",
@@ -173,10 +181,7 @@ export const en = {
   "insp.mergeNext": "Merge next →",
   "insp.split": "Split in half",
   "insp.reset": "Reset edits",
-  "insp.paceCheckFaster":
-    "Table: {table} (distance ÷ time) · chart: {chart} (average of the plotted speed). The table is {pct} faster.",
-  "insp.paceCheckSlower":
-    "Table: {table} (distance ÷ time) · chart: {chart} (average of the plotted speed). The table is {pct} slower.",
+  "insp.basisBoth": "Distance ÷ time: {dist} · watch speed: {dev} ({pct} apart).",
   "insp.paused": "{n} s with the timer stopped are left out of the table pace.",
   "insp.placeStart": "Place start on chart",
   "insp.placeEnd": "Place end on chart",

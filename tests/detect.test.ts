@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseFit } from "../src/fit/parse";
-import { analyseActivity, detect } from "../src/analysis/detect";
+import { analyseActivity, detect, rebuild } from "../src/analysis/detect";
+import { integrateSpeed } from "../src/analysis/measure";
 import { EDGE_PRESETS } from "../src/analysis/model";
 import { buildSeries } from "../src/analysis/timeseries";
 import { encodeFit, synthesize, WORKOUTS } from "../src/sample/synth";
@@ -206,6 +207,15 @@ describe("lap detection", () => {
     expect(noteText(detection)).toMatch(/automatic splits/);
   });
 
+  it("is not fooled by a watch that tags every automatic lap 'interval' (fenix)", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "auto-km" });
+    activity.laps.forEach((l) => (l.intensity = "interval"));
+    const { detection } = analyseActivity(activity, { mode: "auto" });
+    expect(detection.modeUsed).toBe("signal");
+    expect(detection.reps).toHaveLength(8);
+    expect(noteText(detection)).toMatch(/automatic splits/);
+  });
+
   it("falls back to the signal when laps are requested but absent", () => {
     const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "none" });
     const { detection } = analyseActivity(activity, { mode: "laps" });
@@ -274,6 +284,93 @@ describe("speed vs distance consistency", () => {
       if (r.speed !== undefined) r.speed *= 1.08;
     });
     expect(keys(analyseActivity(activity, { mode: "signal" }).detection)).toContain("note.speedHigher");
+  });
+});
+
+describe("pace basis", () => {
+  const sim = () => synthesize({ steps: WORKOUTS["8x400"](), seed: 4, lapMode: "none" }).activity;
+
+  it("distance ÷ time ignores a mis-scaled speed channel; watch speed follows it", () => {
+    const honest = analyseActivity(sim(), { mode: "signal" }).detection;
+    const act = sim();
+    act.records.forEach((r) => {
+      if (r.speed !== undefined) r.speed *= 0.9;
+    });
+    const { series } = analyseActivity(act, { mode: "signal" });
+    const byDistance = detect(act, series, { mode: "signal" }); // default basis
+    const byDevice = detect(act, series, { mode: "signal", paceBasis: "device" });
+    expect(byDistance.reps).toHaveLength(8);
+    expect(byDevice.reps).toHaveLength(8);
+    byDistance.reps.forEach((r, i) => {
+      expect(r.avgSpeed).toBeCloseTo(honest.reps[i].avgSpeed, 0);
+      expect(r.avgSpeed).toBe(r.distSpeed);
+      // the watch speed is 10 % low, and the segmentation (hence the edges) is the same either way
+      expect(byDevice.reps[i].start).toBe(r.start);
+      expect(byDevice.reps[i].avgSpeed / r.avgSpeed).toBeGreaterThan(0.86);
+      expect(byDevice.reps[i].avgSpeed / r.avgSpeed).toBeLessThan(0.93);
+      expect(byDevice.reps[i].avgSpeed).toBe(byDevice.reps[i].deviceSpeed);
+      expect(byDevice.reps[i].distSpeed).toBe(r.distSpeed); // both readings are always kept
+    });
+  });
+
+  it("agrees with itself when the watch's speed and distance agree", () => {
+    const act = sim();
+    const { series } = analyseActivity(act, { mode: "signal" });
+    const dev = detect(act, series, { mode: "signal", paceBasis: "device" });
+    dev.reps.forEach((r) => expect(Math.abs(r.deviceSpeed / r.distSpeed - 1)).toBeLessThan(0.04));
+  });
+
+  it("can be switched on an existing detection without losing manual edits", () => {
+    const act = sim();
+    const { series, detection } = analyseActivity(act, { mode: "signal" });
+    const specs = detection.segments.map((sg) => ({ start: sg.start, end: sg.end, kind: sg.kind, source: sg.source }));
+    specs[3].end += 1.5;
+    specs[4].start += 1.5;
+    const rebuilt = rebuild(series, specs, { ...detection, options: { ...detection.options, paceBasis: "device" } });
+    expect(rebuilt.options.paceBasis).toBe("device");
+    expect(rebuilt.segments[3].end).toBeCloseTo(detection.segments[3].end + 1.5, 6);
+    expect(rebuilt.reps[0].avgSpeed).toBe(rebuilt.reps[0].deviceSpeed);
+  });
+
+  it("falls back to distance ÷ time when the file has no speed channel", () => {
+    const act = sim();
+    act.records.forEach((r) => delete r.speed);
+    const { series } = analyseActivity(act, { mode: "signal" });
+    expect(series.speedFromDevice).toBe(false);
+    const dev = detect(act, series, { mode: "signal", paceBasis: "device" });
+    dev.reps.forEach((r) => expect(r.deviceSpeed).toBe(r.distSpeed));
+  });
+
+  it("derives a lag-free speed from the distance curve", () => {
+    const { activity, truth } = synthesize({ steps: WORKOUTS["8x400"](), seed: 4, lapMode: "none", deviceSmoothing: 5 });
+    const { series } = analyseActivity(activity, { mode: "signal" });
+    // half a rep in, the distance-derived speed is on the plateau; the smoothed one has not got there
+    const rep = truth.find((t) => t.kind === "work")!;
+    const i = Math.round(rep.start + 4);
+    expect(series.distSpeed[i]).toBeGreaterThan(series.speed[Math.round(rep.start + 1)]);
+    const mid = Math.round((rep.start + rep.end) / 2);
+    expect(series.distSpeed[mid]).toBeGreaterThan(3.5);
+    for (let k = 0; k < series.n; k++) if (series.paused[k]) expect(series.distSpeed[k]).toBe(0);
+  });
+});
+
+describe("speed lag estimate", () => {
+  it("finds a lag longer than 4 s (the watch's heavy smoothing)", () => {
+    const { activity } = synthesize({ steps: WORKOUTS["6x800"](), seed: 5, lapMode: "none", deviceSmoothing: 9 });
+    const { series } = analyseActivity(activity, { mode: "signal" });
+    expect(series.speedLag).toBeGreaterThan(5.5); // about 0.7 x the smoothing time constant
+    expect(series.speedLag).toBeLessThan(8.1);
+  });
+});
+
+describe("integrateSpeed", () => {
+  it("integrates the piecewise-linear speed between fractional times", () => {
+    const v = Float64Array.from({ length: 12 }, () => 3);
+    expect(integrateSpeed(v, 2.5, 7.25)).toBeCloseTo(3 * 4.75, 9);
+    expect(integrateSpeed(v, 3.2, 3.6)).toBeCloseTo(3 * 0.4, 9);
+    const ramp = Float64Array.from({ length: 12 }, (_, i) => i); // speed = t
+    expect(integrateSpeed(ramp, 2, 6)).toBeCloseTo((36 - 4) / 2, 9);
+    expect(integrateSpeed(ramp, 2.5, 6.5)).toBeCloseTo((6.5 ** 2 - 2.5 ** 2) / 2, 9);
   });
 });
 

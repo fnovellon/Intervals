@@ -64,7 +64,11 @@ export function detectLaps(
     return { len: b - a, speed: (distanceAt(series, b) - distanceAt(series, a)) / moving };
   });
 
+  // A structured workout has *different* intensities (warm-up / active / rest ...). Some watches
+  // (e.g. fenix) tag every automatic per-km lap "interval": that carries no structure at all.
+  const intensities = new Set(usable.map((l) => l.intensity).filter(Boolean));
   const structured =
+    intensities.size >= 2 &&
     usable.some((l) => l.intensity && STRUCTURE_INTENSITIES.has(l.intensity)) &&
     usable.some((l) => l.intensity === "active" || l.intensity === "interval");
 

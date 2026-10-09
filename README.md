@@ -51,7 +51,7 @@ public, but files you drop on it are still analysed only in the visitor's browse
 | --- | --- |
 | Structured workout on the watch | Uses the lap intensities the watch recorded (warm-up / active / rest / cool-down). Never moved: the watch ended those steps exactly. |
 | Manual lap-button laps | Laps are classified by pace; boundaries are snapped to the nearest real pace change (the button is pressed a second or three early/late). |
-| Fartlek / no laps / auto-km laps | Intervals are found from the pace signal alone. Automatic per-km laps are recognised and ignored. |
+| Fartlek / no laps / auto-km laps | Intervals are found from the pace signal alone. Automatic per-km laps are recognised and ignored, even when the watch tags each of them "interval" (fenix): a structured workout needs laps with *different* intensities. |
 | Variable reps (pyramids, ladders) | Each rep is measured separately; the description is the sequence (`400 m · 800 m · 1.2 km · 800 m · 400 m / 2 min rest`). |
 | Hills | Grade-adjusted pace (Minetti cost model) is used automatically on hilly routes, so a slow climb is correctly "hard" and the jog down "easy". |
 | Standing rests with auto-pause | A pause is a rest segment with its true duration, not a gap. |
@@ -74,6 +74,7 @@ boundary can be corrected with the mouse or keyboard, and everything recomputes:
 | --- | --- |
 | **Source** | Device laps, the pace signal, or Auto (laps when they carry real structure). |
 | **Pace type** | Plain pace, grade-adjusted pace (hills), or Auto (grade-adjusted on hilly routes). |
+| **Pace from** | *Distance ÷ time* (default, like the lap table in Garmin Connect) or *Watch speed* (the speed channel the watch recorded, like its screen while you run). Only shown when the file has a speed channel. Changing it only changes the numbers, not the intervals found. |
 | **Sensitivity** | How small a change of pace counts as the start/end of an interval. Higher finds shorter, subtler changes. |
 | **Interval edges** | *Where on a change of pace* an interval starts and ends. **Beep to beep** (default): from the first clear acceleration (effort 20 %) until just before the pace drops (effort 80 %), moved back by a 0.5 s reaction time. **Half-way**: the middle of each change. **Steady pace only**: just the plateau (cleanest pace, but shorter reps). Start, end and reaction time can also be set by hand. |
 | **Min rep / Min rest** | Shortest hard effort and shortest recovery that count. |
@@ -90,9 +91,19 @@ for the cleanest pace, knowing that reps then come out about 5 s / 7 % short.
 `samples/8x400-slow-acceleration.fit` has a slow ~30 s build-up into each rep: try the three strategies
 and watch the starts and ends move.
 
-**Table vs chart.** The table's pace is distance ÷ time (like the lap table in Garmin Connect); the chart plots
-the speed the watch recorded. They normally agree. If a file's speed channel and its distance disagree by
-more than 3 % (different sensors feeding each), the app says so, and selecting an interval shows both numbers.
+**Two ways to read a pace.** A Garmin file holds a distance curve and, separately, a speed channel. Most of the
+time they agree. They can differ for two reasons:
+
+- the watch smooths its speed over several seconds and reports it a few seconds late (the app measures that delay,
+  often 4-6 s, and compensates for it when placing the edges), so on a 30-60 s rep the speed never reaches the
+  pace you actually ran: the live pace on the watch understates short efforts;
+- on some files the speed channel reads a few percent below (or above) the speed implied by the distance, whatever the
+  smoothing. When that exceeds 3 % the app says so.
+
+By default the app reports **distance ÷ time**, the same as the lap table in Garmin Connect, and plots the speed implied
+by the distance curve, so chart and table agree. Choose **Watch speed** in *Pace from* to see what the watch showed
+instead. Selecting an interval always shows both numbers, and the CSV has both. The file alone cannot tell which one
+is closer to the truth: check a known distance (a 400 m track lap, a measured km) if it matters.
 
 ## How the detection works
 
@@ -100,7 +111,7 @@ more than 3 % (different sensors feeding each), the app says so, and selecting a
    Pauses (timer events, or long gaps) become explicit zero-speed seconds, GPS
    spikes are removed, and altitude is smoothed into a grade for grade-adjusted pace.
 2. **Lag compensation.** Device speed is smoothed, so it trails real changes of
-   pace. The lag against the distance curve is estimated by least-squares
+   pace (up to 8 s is searched for). The lag against the distance curve is estimated by least-squares
    alignment over the whole file and removed (a no-op if there is none).
 3. **Segmentation.** Exact optimal piecewise-constant segmentation (PELT with a
    minimum segment length; verified against brute-force dynamic programming).
@@ -116,7 +127,7 @@ more than 3 % (different sensors feeding each), the app says so, and selecting a
    speed.
 6. **Metrics.** Distance comes from the recorded cumulative-distance curve
    evaluated at the exact (fractional) boundaries; pace is distance / moving
-   time. Summary statistics (variability, first→last trend, rest, HR recovery) are
+   time (or, with *Watch speed*, the integral of the recorded speed over the same span). Summary statistics (variability, first→last trend, rest, HR recovery) are
    computed on the largest group of similar reps so a pyramid or a block of
    strides does not distort them.
 

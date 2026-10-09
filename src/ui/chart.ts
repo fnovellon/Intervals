@@ -1,5 +1,5 @@
 import type { Detection, Segment } from "../analysis/model";
-import { distanceAt, quantile, type Series } from "../analysis/timeseries";
+import { distanceAt, paceSeries, quantile, type Series } from "../analysis/timeseries";
 import { clear, h, s } from "./dom";
 import { getLocale, nf, t } from "../i18n";
 import { structureText } from "../analysis/summary";
@@ -123,7 +123,8 @@ export class TimelineChart {
     // pace / speed domain from the whole activity so zooming does not rescale
     const movingSpeeds: number[] = [];
     // Ignore standing and the brief ramps through it: they would stretch the axis to 12+ min/km.
-    for (let i = 0; i < series.n; i += 2) if (series.speed[i] > 1.5) movingSpeeds.push(series.speed[i]);
+    const speedLine = paceSeries(series, detection.options.paceBasis);
+    for (let i = 0; i < series.n; i += 2) if (speedLine[i] > 1.5) movingSpeeds.push(speedLine[i]);
     const axisVals = movingSpeeds.map(display.toAxis);
     let lo: number;
     let hi: number;
@@ -233,7 +234,7 @@ export class TimelineChart {
     const lineGroup = s("g", { "clip-path": `url(#${clipId})` });
     const paceP = panels.find((p) => p.key === "pace")!;
     lineGroup.append(
-      s("path", { class: "raw", d: pathOf(bucketize(iLo, iHi, plotW, (i) => xOfT(i), px, (i) => series.speed[i], (v) => paceP.y(display.toAxis(v)))) }),
+      s("path", { class: "raw", d: pathOf(bucketize(iLo, iHi, plotW, (i) => xOfT(i), px, (i) => speedLine[i], (v) => paceP.y(display.toAxis(v)))) }),
     );
     // detected segment averages
     const stepsG = s("g");
@@ -414,7 +415,8 @@ export class TimelineChart {
     hit.append(s("title", {}, t("ch.drag")));
     g.append(hit);
 
-    const paceAt = (time: number) => props.display.formatWithUnit(props.series.speed[Math.min(props.series.n - 1, Math.max(0, Math.round(time)))]);
+    const paceLine = paceSeries(props.series, props.detection.options.paceBasis);
+    const paceAt = (time: number) => props.display.formatWithUnit(paceLine[Math.min(props.series.n - 1, Math.max(0, Math.round(time)))]);
 
     hit.addEventListener("pointerdown", (ev) => {
       ev.stopPropagation();
@@ -607,7 +609,7 @@ export class TimelineChart {
     const rows: Array<{ name: string; value: string; color?: string }> = [];
     for (const p of this.panels) {
       if (p.key === "pace") {
-        const v = series.speed[i];
+        const v = paceSeries(series, detection.options.paceBasis)[i];
         rows.push({ name: display.label, value: display.formatWithUnit(v), color: "var(--s1)" });
         this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(display.toAxis(v)), r: 3.5, fill: "var(--ink-2)" }));
       } else if (p.key === "hr" && Number.isFinite(series.hr[i])) {

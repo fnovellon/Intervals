@@ -5,6 +5,12 @@ export type SegmentKind = "warmup" | "work" | "rest" | "cooldown" | "other";
 export type SegmentSource = "signal" | "lap" | "manual";
 export type DetectMode = "auto" | "signal" | "laps";
 export type SignalKind = "auto" | "speed" | "gap";
+/**
+ * Where a pace comes from. "distance": distance covered ÷ time (what the lap table in Garmin Connect
+ * shows). "device": the speed the watch recorded second by second (what its screen shows while you run).
+ * They agree unless the watch's speed and distance come from different sensors.
+ */
+export type PaceBasis = "distance" | "device";
 
 export interface Segment {
   id: number;
@@ -22,11 +28,15 @@ export interface Segment {
   movingTime: Seconds;
   /** Metres, from the cumulative distance curve at the exact boundaries. */
   distance: number;
-  /** distance / movingTime, m/s. */
+  /** Average speed on the chosen pace basis (`DetectOptions.paceBasis`), m/s. */
   avgSpeed: number;
+  /** distance / movingTime, m/s. */
+  distSpeed: number;
+  /** Mean of the speed the watch recorded, m/s (equals `distSpeed` when the file has no speed channel). */
+  deviceSpeed: number;
   /** Mean grade-adjusted speed, m/s. */
   avgGapSpeed: number;
-  /** Best 5 s average speed inside the segment, m/s. */
+  /** Best 5 s average speed inside the segment (on the chosen basis), m/s. */
   maxSpeed: number;
 
   avgHr?: number;
@@ -102,6 +112,8 @@ export interface DetectOptions {
    * earlier, because the pace only changes after the beep.
    */
   reactionSec: number;
+  /** Which speed the reported paces come from. Detection itself always uses the recorded speed. */
+  paceBasis: PaceBasis;
   /** Override the work/rest speed threshold (m/s). Auto when undefined. */
   thresholdSpeed?: number;
 }
@@ -127,6 +139,7 @@ export const DEFAULT_OPTIONS: DetectOptions = {
   minWorkSec: 10,
   minRestSec: 6,
   snapLaps: true,
+  paceBasis: "distance",
   ...EDGE_PRESETS.beep,
 };
 

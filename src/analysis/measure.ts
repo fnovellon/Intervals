@@ -1,5 +1,5 @@
 import { clamp, distanceAt, pausedSeconds, type Series } from "./timeseries";
-import type { Segment, SegmentSpec } from "./model";
+import type { PaceBasis, Segment, SegmentSpec } from "./model";
 
 /** Mean of finite values in arr[lo, hi). NaN when there are none. */
 export function meanOf(arr: ArrayLike<number>, lo: number, hi: number): number {
@@ -29,8 +29,27 @@ export function sampleRange(start: number, end: number): [number, number] {
   return [Math.ceil(start - 1e-9), Math.ceil(end - 1e-9)];
 }
 
+/** Integral of the piecewise-linear recorded speed over [a, b] seconds: the distance the speed channel implies. */
+export function integrateSpeed(speed: ArrayLike<number>, a: number, b: number): number {
+  const last = speed.length - 1;
+  const at = (t: number) => {
+    const i = Math.min(last - 1, Math.max(0, Math.floor(t)));
+    return speed[i] + (t - i) * (speed[i + 1] - speed[i]);
+  };
+  a = clamp(a, 0, last);
+  b = clamp(b, a, last);
+  if (b - a < 1e-9) return 0;
+  const ia = Math.floor(a) + 1;
+  const ib = Math.floor(b);
+  if (ia > ib) return ((at(a) + at(b)) / 2) * (b - a);
+  let sum = ((at(a) + speed[ia]) / 2) * (ia - a);
+  for (let i = ia; i < ib; i++) sum += (speed[i] + speed[i + 1]) / 2;
+  sum += ((speed[ib] + at(b)) / 2) * (b - ib);
+  return sum;
+}
+
 /** Compute all metrics for one segment from the 1 Hz series. */
-export function measureSegment(series: Series, spec: SegmentSpec, id: number): Segment {
+export function measureSegment(series: Series, spec: SegmentSpec, id: number, basis: PaceBasis = "distance"): Segment {
   const start = clamp(spec.start, 0, series.n - 1);
   const end = clamp(spec.end, start, series.n - 1);
   const [lo, hi] = sampleRange(start, end);
@@ -41,8 +60,11 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
   const distance = distanceAt(series, end) - distanceAt(series, start);
   // A standing rest has almost no moving time; dividing by it would give a
   // meaningless pace, so fall back to wall-clock time when mostly stopped.
-  const basis = paused > 0.5 * duration ? duration : movingTime;
-  const avgSpeed = basis > 0 ? distance / basis : 0;
+  const timeBasis = paused > 0.5 * duration ? duration : movingTime;
+  const distSpeed = timeBasis > 0 ? distance / timeBasis : 0;
+  // Same division with the distance the recorded speed adds up to (paused seconds carry speed 0).
+  const deviceSpeed = series.speedFromDevice && timeBasis > 0 ? integrateSpeed(series.speed, start, end) / timeBasis : distSpeed;
+  const avgSpeed = basis === "device" ? deviceSpeed : distSpeed;
 
   // Grade-adjusted speed = the segment's own speed (distance / time) times the average effect of the
   // slope, weighted by distance covered. Built this way it equals the plain speed exactly on flat
@@ -58,10 +80,17 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
   }
   const slopeFactor = vs > 0 ? gs / vs : 1;
 
-  // Best 5 s average speed (from the distance curve, so it is not smoothed twice).
+  // Best 5 s average speed: from the distance curve (not smoothed twice), or from the recorded speed.
   let maxSpeed = 0;
+  const useDevice = basis === "device" && series.speedFromDevice;
   for (let i = lo; i + 5 <= hi && i + 5 < series.n; i++) {
-    maxSpeed = Math.max(maxSpeed, (series.dist[i + 5] - series.dist[i]) / 5);
+    if (useDevice) {
+      let m = 0;
+      for (let k = i; k < i + 5; k++) m += series.speed[k];
+      maxSpeed = Math.max(maxSpeed, m / 5);
+    } else {
+      maxSpeed = Math.max(maxSpeed, (series.dist[i + 5] - series.dist[i]) / 5);
+    }
   }
   if (maxSpeed === 0) maxSpeed = avgSpeed;
 
@@ -76,6 +105,8 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
     movingTime,
     distance,
     avgSpeed,
+    distSpeed,
+    deviceSpeed,
     avgGapSpeed: avgSpeed * slopeFactor,
     maxSpeed,
   };
@@ -150,6 +181,6 @@ export function measureSegment(series: Series, spec: SegmentSpec, id: number): S
   return seg;
 }
 
-export function measureAll(series: Series, specs: SegmentSpec[]): Segment[] {
-  return specs.map((spec, i) => measureSegment(series, spec, i));
+export function measureAll(series: Series, specs: SegmentSpec[], basis: PaceBasis = "distance"): Segment[] {
+  return specs.map((spec, i) => measureSegment(series, spec, i, basis));
 }

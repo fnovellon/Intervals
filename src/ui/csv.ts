@@ -31,6 +31,8 @@ export function segmentsToCsv(d: Detection, series: Series, sport: string): stri
     "avg_grade_pct",
     "fade_pct",
     "speed_cv_pct",
+    "distance_over_time_speed_mps",
+    "watch_speed_mps",
   ];
   const fmt = (v: number | undefined, digits = 2) => (v === undefined || !Number.isFinite(v) ? "" : v.toFixed(digits));
   const rows = d.segments.map((s) => {
@@ -61,6 +63,8 @@ export function segmentsToCsv(d: Detection, series: Series, sport: string): stri
       fmt(s.avgGrade, 2),
       fmt(s.fadePct, 2),
       fmt(s.speedCvPct, 2),
+      fmt(s.distSpeed, 3),
+      fmt(s.deviceSpeed, 3),
     ].join(",");
   });
   return [cols.join(","), ...rows].join("\n") + "\n";

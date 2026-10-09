@@ -53,9 +53,9 @@ export const fr: Record<Key, string> = {
   "note.lag":
     "La vitesse de l’appareil retarde d’environ {lag} s sur la courbe de distance ; les limites ont été compensées.",
   "note.speedLower":
-    "Dans ce fichier, la vitesse enregistrée par la montre est en moyenne inférieure de {pct}\u00A0% à celle que donne sa propre distance\u00A0: l’allure tracée paraît donc plus lente que celle du tableau. Le tableau utilise distance ÷ temps, comme le tableau des tours de Garmin Connect.",
+    "Dans ce fichier, la vitesse enregistrée par la montre (celle qu’affiche son écran pendant la course) est en moyenne inférieure de {pct}\u00A0% à celle que donne sa propre distance. Par défaut, l’application utilise distance ÷ temps, comme le tableau des tours de Garmin Connect\u00A0; «\u00A0Allure d’après\u00A0» permet de passer à la vitesse de la montre.",
   "note.speedHigher":
-    "Dans ce fichier, la vitesse enregistrée par la montre est en moyenne supérieure de {pct}\u00A0% à celle que donne sa propre distance\u00A0: l’allure tracée paraît donc plus rapide que celle du tableau. Le tableau utilise distance ÷ temps, comme le tableau des tours de Garmin Connect.",
+    "Dans ce fichier, la vitesse enregistrée par la montre (celle qu’affiche son écran pendant la course) est en moyenne supérieure de {pct}\u00A0% à celle que donne sa propre distance. Par défaut, l’application utilise distance ÷ temps, comme le tableau des tours de Garmin Connect\u00A0; «\u00A0Allure d’après\u00A0» permet de passer à la vitesse de la montre.",
   "note.hilly": "Parcours vallonné : les intervalles ont été segmentés sur l’allure ajustée à la pente.",
   "note.noAltitude":
     "Pas de données d’altitude dans ce fichier : l’allure ajustée à la pente est indisponible, l’allure brute est utilisée.",
@@ -124,6 +124,11 @@ export const fr: Record<Key, string> = {
   "tb.snap": "Caler les tours sur l’allure",
   "tb.snapTitle":
     "Déplace les limites des tours que vous avez déclenchés à la main vers le changement d’allure réel le plus proche. Les tours d’une séance programmée ne sont jamais déplacés.",
+  "tb.basis": "Allure d’après",
+  "tb.basisDist": "Distance ÷ temps",
+  "tb.basisDev": "Vitesse montre",
+  "tb.basisTitle":
+    "D’où viennent les allures. Distance ÷ temps\u00A0: distance parcourue sur la durée, comme le tableau des tours de Garmin Connect. Vitesse montre\u00A0: la vitesse enregistrée seconde par seconde par la montre, comme son écran pendant la course. Cette vitesse est lissée sur plusieurs secondes\u00A0: sur les répétitions courtes, elle reste en dessous de votre vraie allure.",
   "tb.units": "Unités",
   "tb.km": "km",
   "tb.mi": "mi",
@@ -134,6 +139,7 @@ export const fr: Record<Key, string> = {
   "res.fromSignal": "Détecté à partir du signal d’allure. {reason}",
   "res.gapNote":
     "Efforts et récupérations ont été jugés sur l’allure ajustée à la pente (effort équivalent à plat), pas sur l’allure brute.",
+  "res.basisDevice": "Les allures sont la vitesse enregistrée par la montre, pas distance ÷ temps.",
   "res.edited": "Modifié manuellement.",
   "hero.kicker": "Séance détectée",
   "hero.sub": "{count} efforts · {dist} de course intense en {time}",
@@ -167,6 +173,8 @@ export const fr: Record<Key, string> = {
   "tl.title": "Chronologie",
   "tl.recordedPace": "Allure enregistrée",
   "tl.recordedSpeed": "Vitesse enregistrée",
+  "tl.distancePace": "Allure d’après la distance",
+  "tl.distanceSpeed": "Vitesse d’après la distance",
   "tl.avg": "Moyenne par intervalle",
   "tl.work": "Effort",
   "tl.time": "Temps",
@@ -180,10 +188,7 @@ export const fr: Record<Key, string> = {
   "insp.mergeNext": "Fusionner suiv. →",
   "insp.split": "Couper en deux",
   "insp.reset": "Annuler les modifications",
-  "insp.paceCheckFaster":
-    "Tableau\u00A0: {table} (distance ÷ temps) · graphique\u00A0: {chart} (moyenne de la vitesse tracée). Le tableau est {pct} plus rapide.",
-  "insp.paceCheckSlower":
-    "Tableau\u00A0: {table} (distance ÷ temps) · graphique\u00A0: {chart} (moyenne de la vitesse tracée). Le tableau est {pct} plus lent.",
+  "insp.basisBoth": "Distance ÷ temps\u00A0: {dist} · vitesse montre\u00A0: {dev} ({pct} d’écart).",
   "insp.paused": "{n} s avec le chrono arrêté ne sont pas comptées dans l’allure du tableau.",
   "insp.placeStart": "Placer le début sur le graphique",
   "insp.placeEnd": "Placer la fin sur le graphique",

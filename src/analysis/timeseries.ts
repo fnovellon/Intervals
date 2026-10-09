@@ -1,5 +1,6 @@
 import type { Activity, RecordPoint, TimeRange } from "../fit/types";
 import { AppError, msg, type Msg } from "../i18n";
+import type { PaceBasis } from "./model";
 
 /**
  * Uniform 1 Hz view of an activity. Index i corresponds to t = i seconds on the
@@ -14,6 +15,11 @@ export interface Series {
   speed: Float64Array;
   /** Grade-adjusted ("flat equivalent") speed in m/s. Equals speed without altitude. */
   gapSpeed: Float64Array;
+  /**
+   * Speed implied by the distance curve (5 s window), m/s. Needs no lag compensation: the distance
+   * curve is the reference the device speed is aligned to. Equals `speed` when the file has no speed.
+   */
+  distSpeed: Float64Array;
   /** Smoothed grade as a fraction (0.05 = 5 %). */
   grade: Float64Array;
   /** Smoothed altitude in metres (NaN when unavailable). */
@@ -197,6 +203,9 @@ export function buildSeries(activity: Activity): Series {
     }
   }
 
+  // Speed implied by the distance curve itself: the "distance ÷ time" pace, second by second.
+  const distSpeed = speedFromDevice ? distanceSpeed(dist, paused, vmax) : speed;
+
   // ---- altitude, grade, GAP -------------------------------------------------------
   const hasAltitude = altRaw.filter(Number.isFinite).length >= 0.5 * n;
   const altitude = grid();
@@ -225,6 +234,7 @@ export function buildSeries(activity: Activity): Series {
     n,
     dist,
     speed,
+    distSpeed,
     gapSpeed,
     grade,
     altitude,
@@ -360,7 +370,7 @@ export function quantile(values: ArrayLike<number>, q: number): number {
 /** Speed vs distance disagreement (fraction) above which the file gets a visible note. */
 const SPEED_MISMATCH = 0.03;
 const MIN_LAG_TO_APPLY_S = 0.5;
-const MAX_LAG_S = 4;
+const MAX_LAG_S = 8;
 
 /**
  * Seconds by which `speed` trails the central difference of `dist`, found by
@@ -398,6 +408,30 @@ export function estimateSpeedLag(speed: ArrayLike<number>, dist: ArrayLike<numbe
   }
   // Only trust a lag that clearly beats "no lag".
   return bestErr < 0.9 * err0 ? bestLag : 0;
+}
+
+const DIST_SPEED_HALF_WINDOW_S = 2.5;
+
+/** Speed from the slope of the cumulative distance over a short centred window (zero while paused). */
+function distanceSpeed(dist: Float64Array, paused: Uint8Array, vmax: number): Float64Array {
+  const n = dist.length;
+  const at = (t: number) => {
+    const i = Math.min(n - 2, Math.floor(t));
+    return dist[i] + (t - i) * (dist[i + 1] - dist[i]);
+  };
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (paused[i]) continue;
+    const a = Math.max(0, i - DIST_SPEED_HALF_WINDOW_S);
+    const b = Math.min(n - 1, i + DIST_SPEED_HALF_WINDOW_S);
+    out[i] = b > a ? clamp((at(b) - at(a)) / (b - a), 0, vmax) : 0;
+  }
+  return out;
+}
+
+/** The speed series a pace basis refers to. */
+export function paceSeries(series: Series, basis: PaceBasis): Float64Array {
+  return basis === "device" ? series.speed : series.distSpeed;
 }
 
 /** out[i] = x(i + lag): moves a signal earlier in time by `lag` seconds. */
