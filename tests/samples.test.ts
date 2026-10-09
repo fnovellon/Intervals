@@ -10,6 +10,7 @@ import { encodeFit, synthesize, WORKOUTS, type LapMode, type SynthOptions, type 
 const FILES: Array<[string, WorkoutName, LapMode, Partial<SynthOptions>]> = [
   ["6x800-structured-workout", "6x800", "workout", { autoPause: true, subSport: "track" }],
   ["8x400-lap-button", "8x400", "manual", {}],
+  ["8x400-slow-acceleration", "8x400", "none", { athleteTau: 10 }],
   ["pyramid-no-laps", "pyramid", "none", {}],
   ["fartlek-8x2min", "fartlek", "none", {}],
   ["hill-repeats", "hills", "none", { truthAt: "command" }],

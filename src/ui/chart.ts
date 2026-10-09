@@ -407,9 +407,9 @@ export class TimelineChart {
     });
     // A visible line and grip at all times, so the boundary is obviously something you can grab.
     g.append(s("line", { class: "handle-line", x1: x, x2: x, y1: top, y2: bottom }));
-    g.append(s("rect", { class: "handle-grip", x: x - 4, y: top + STRIP_H / 2 - 9, width: 8, height: 18, rx: 4 }));
+    g.append(s("rect", { class: "handle-grip", x: x - 2.5, y: top + STRIP_H / 2 - 6, width: 5, height: 12, rx: 2.5 }));
     // The grab area runs the full height of the chart, not only the strip.
-    const hit = s("rect", { class: "handle-hit", x: x - 9, y: top - 2, width: 18, height: bottom - top + 2 });
+    const hit = s("rect", { class: "handle-hit", x: x - 7, y: top - 2, width: 14, height: bottom - top + 2 });
     hit.append(s("title", {}, t("ch.drag")));
     g.append(hit);
 
@@ -608,14 +608,14 @@ export class TimelineChart {
       if (p.key === "pace") {
         const v = series.speed[i];
         rows.push({ name: display.label, value: display.formatWithUnit(v), color: "var(--s1)" });
-        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(display.toAxis(v)), r: 4.5, fill: "var(--ink-2)" }));
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(display.toAxis(v)), r: 3.5, fill: "var(--ink-2)" }));
       } else if (p.key === "hr" && Number.isFinite(series.hr[i])) {
         rows.push({ name: t("tt.hr"), value: `${Math.round(series.hr[i])} ${t("unit.bpm")}`, color: "var(--s2)" });
-        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.hr[i]), r: 4.5, fill: "var(--s2)" }));
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.hr[i]), r: 3.5, fill: "var(--s2)" }));
       } else if (p.key === "ele" && Number.isFinite(series.altitude[i])) {
         const k = units === "imperial" ? 3.28084 : 1;
         rows.push({ name: t("tt.ele"), value: `${Math.round(series.altitude[i] * k)} ${units === "imperial" ? "ft" : "m"}`, color: "var(--s3)" });
-        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.altitude[i] * k), r: 4.5, fill: "var(--s3)" }));
+        this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.altitude[i] * k), r: 3.5, fill: "var(--s3)" }));
       }
     }
     if (series.hasCadence && Number.isFinite(series.cadence[i]) && series.cadence[i] > 0) {

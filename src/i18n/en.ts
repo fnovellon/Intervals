@@ -87,6 +87,14 @@ export const en = {
   "tb.speed": "Speed",
   "tb.gap": "Grade-adjusted",
   "tb.sensitivity": "Sensitivity",
+  "tb.sensitivityTitle":
+    "How small a change of pace counts as the start or end of an interval. Higher finds shorter, subtler changes; lower ignores small variations.",
+  "tb.edge": "Edge position",
+  "tb.edgeTitle":
+    "Where on a change of pace an interval starts and ends. 50 % = half-way (default). Lower: intervals start earlier and end later. Higher: only the part close to full pace counts.",
+  "tb.minRepTitle": "Shortest hard effort that counts as an interval, in seconds.",
+  "tb.minRestTitle": "Shortest recovery that separates two intervals, in seconds.",
+  "tb.thresholdTitle": "The pace that separates hard from easy. Leave empty for automatic.",
   "tb.minRep": "Min rep (s)",
   "tb.minRest": "Min rest (s)",
   "tb.threshold": "Work/rest threshold ({unit})",

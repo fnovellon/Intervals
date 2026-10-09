@@ -116,7 +116,7 @@ export function detectLaps(
       const hardAfter = kinds[i] === "work";
       if (hardBefore === hardAfter) continue;
       if (Math.abs(lapStats[i].speed - lapStats[i - 1].speed) < minStep) continue;
-      const t = refineBoundary(signal, bounds[i], bounds[i - 1], bounds[i + 1]);
+      const t = refineBoundary(signal, bounds[i], bounds[i - 1], bounds[i + 1], 10, 3, opts.edgeFraction);
       shift[i] = t - bounds[i];
       bounds[i] = t;
     }

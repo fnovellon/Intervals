@@ -68,6 +68,21 @@ boundary can be corrected with the mouse or keyboard, and everything recomputes:
 - **Keyboard**: focus a boundary (Tab) and press ← / → to move it by 0.5 s (Shift 5 s, Alt 0.1 s).
 - Segments can also be re-typed, merged or split. Results export to CSV.
 
+## Detection settings
+
+| Setting | What it does |
+| --- | --- |
+| **Source** | Device laps, the pace signal, or Auto (laps when they carry real structure). |
+| **Pace type** | Plain pace, grade-adjusted pace (hills), or Auto (grade-adjusted on hilly routes). |
+| **Sensitivity** | How small a change of pace counts as the start/end of an interval. Higher finds shorter, subtler changes. |
+| **Edge position** | *Where on a change of pace* an interval starts and ends. 50 % = half-way (default). Lower: reps start earlier and end later; higher: only the part close to full pace counts. Use it when a slow build-up makes a rep look too early or too late. |
+| **Min rep / Min rest** | Shortest hard effort and shortest recovery that count. |
+| **Work/rest threshold** | The pace that separates hard from easy (automatic by default). |
+| **Snap laps to pace** | Moves lap-button laps to the nearest real change of pace. |
+
+`samples/8x400-slow-acceleration.fit` has a slow ~30 s build-up into each rep: try moving
+*Edge position* between 25 % and 75 % and watch the starts and ends move.
+
 ## How the detection works
 
 1. **Time series.** Records are resampled to a uniform 1 Hz grid on the wall clock.

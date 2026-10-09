@@ -93,6 +93,14 @@ export const fr: Record<Key, string> = {
   "tb.speed": "Vitesse",
   "tb.gap": "Ajustée à la pente",
   "tb.sensitivity": "Sensibilité",
+  "tb.sensitivityTitle":
+    "Variation d’allure minimale pour marquer le début ou la fin d’un intervalle. Plus haut : détecte des changements plus courts et plus discrets ; plus bas : ignore les petites variations.",
+  "tb.edge": "Position des limites",
+  "tb.edgeTitle":
+    "Endroit, sur un changement d’allure, où un intervalle commence et se termine. 50 % = à mi-chemin (par défaut). Plus bas : les intervalles commencent plus tôt et finissent plus tard. Plus haut : seule la partie proche de l’allure maximale compte.",
+  "tb.minRepTitle": "Durée minimale d’un effort intense pour compter comme intervalle, en secondes.",
+  "tb.minRestTitle": "Durée minimale d’une récupération pour séparer deux intervalles, en secondes.",
+  "tb.thresholdTitle": "L’allure qui sépare effort intense et effort facile. Laisser vide pour le mode automatique.",
   "tb.minRep": "Effort min. (s)",
   "tb.minRest": "Récup. min. (s)",
   "tb.threshold": "Seuil effort/récup. ({unit})",

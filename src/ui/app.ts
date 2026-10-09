@@ -413,7 +413,25 @@ export function mountApp(root: HTMLElement) {
       timer = window.setTimeout(recompute, 90);
     });
 
-    const numberField = (label: string, key: "minWorkSec" | "minRestSec", min: number, max: number) => {
+    const edgeLabel = h("span", { class: "val" }, pct(state.options.edgeFraction * 100, 0));
+    const edge = h("input", {
+      type: "range",
+      min: "0.2",
+      max: "0.8",
+      step: "0.05",
+      value: String(state.options.edgeFraction),
+      "aria-label": t("tb.edge"),
+      title: t("tb.edgeTitle"),
+    });
+    let edgeTimer: number | undefined;
+    edge.addEventListener("input", () => {
+      edgeLabel.textContent = pct(Number(edge.value) * 100, 0);
+      state.options.edgeFraction = Number(edge.value);
+      window.clearTimeout(edgeTimer);
+      edgeTimer = window.setTimeout(recompute, 90);
+    });
+
+    const numberField = (label: string, key: "minWorkSec" | "minRestSec", min: number, max: number, title: string) => {
       const input = h("input", { type: "number", min: String(min), max: String(max), step: "1", value: String(state.options[key]), id: `f-${key}` });
       input.addEventListener("change", () => {
         const v = Math.min(max, Math.max(min, Number(input.value) || min));
@@ -421,7 +439,7 @@ export function mountApp(root: HTMLElement) {
         state.options[key] = v;
         recompute();
       });
-      return h("div", { class: "field" }, h("label", { for: `f-${key}` }, label), input);
+      return h("div", { class: "field", title }, h("label", { for: `f-${key}` }, label), input);
     };
 
     const thr = h("input", { type: "text", id: "f-thr", placeholder: t("tb.autoThreshold"), size: "6", inputmode: "numeric", "aria-label": t("tb.threshold", { unit: sd.unit }) });
@@ -463,10 +481,11 @@ export function mountApp(root: HTMLElement) {
       { class: "toolbar", role: "region", "aria-label": t("tb.aria") },
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.source")), segmented<DetectMode>([["auto", t("tb.auto")], ["laps", t("tb.laps")], ["signal", t("tb.signal")]], () => state.options.mode, (v) => { state.options.mode = v; recompute(); })),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.paceType")), segmented<SignalKind>([["auto", t("tb.auto")], ["speed", sd.isPace ? t("tb.pace") : t("tb.speed")], ["gap", t("tb.gap")]], () => state.options.signal, (v) => { state.options.signal = v; recompute(); })),
-      h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, sens, sensLabel)),
-      numberField(t("tb.minRep"), "minWorkSec", 3, 600),
-      numberField(t("tb.minRest"), "minRestSec", 2, 600),
-      h("div", { class: "field" }, h("label", { for: "f-thr" }, t("tb.threshold", { unit: sd.unit })), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, thr, thrNote)),
+      h("div", { class: "field", title: t("tb.sensitivityTitle") }, h("span", { class: "lbl" }, t("tb.sensitivity")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, sens, sensLabel)),
+      h("div", { class: "field", title: t("tb.edgeTitle") }, h("span", { class: "lbl" }, t("tb.edge")), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, edge, edgeLabel)),
+      numberField(t("tb.minRep"), "minWorkSec", 3, 600, t("tb.minRepTitle")),
+      numberField(t("tb.minRest"), "minRestSec", 2, 600, t("tb.minRestTitle")),
+      h("div", { class: "field", title: t("tb.thresholdTitle") }, h("label", { for: "f-thr" }, t("tb.threshold", { unit: sd.unit })), h("span", { style: { display: "flex", alignItems: "center", gap: "8px" } }, thr, thrNote)),
       h("div", { class: "field check" }, snap, h("label", { for: "f-snap", title: t("tb.snapTitle") }, t("tb.snap"))),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.units")), segmented<Units>([["metric", t("tb.km")], ["imperial", t("tb.mi")]], () => state.units, (v) => { state.units = v; renderToolbarUnits(); renderResults(); })),
     );

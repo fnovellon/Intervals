@@ -92,7 +92,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
 
   // ---- boundary refinement -----------------------------------------------------------
   for (let k = 1; k < runs.length; k++) {
-    const t = refineBoundary(signal, runs[k].start, runs[k - 1].start, runs[k].end);
+    const t = refineBoundary(signal, runs[k].start, runs[k - 1].start, runs[k].end, 10, 3, opts.edgeFraction);
     runs[k - 1].end = t;
     runs[k].start = t;
   }
@@ -187,6 +187,7 @@ export function refineBoundary(
   rightEnd: number,
   window = 10,
   margin = 3,
+  edge = 0.5,
 ): number {
   const ls = Math.ceil(leftStart);
   const re = Math.floor(rightEnd);
@@ -241,5 +242,50 @@ export function refineBoundary(
     const denom = em - 2 * bestErr + ep;
     if (denom > 1e-12) frac = clamp(0.5 * (em - ep) / denom, -0.5, 0.5);
   }
-  return cut + frac - HALF_SAMPLE;
+  const t50 = cut + frac - HALF_SAMPLE;
+  const q = clamp(edge, 0.05, 0.95);
+  if (Math.abs(q - 0.5) < 0.005) return t50;
+
+  // ---- other fractions of the change -------------------------------------------------------------
+  // Progress runs 0 -> 1 from the left level to the right level. An interval's "effort fraction" is
+  // progress when the right side is the hard one (a start) and 1 - progress when it is the left (an end),
+  // so a lower q always means "more inclusive": earlier starts, later ends.
+  const target = muR > muL ? q : 1 - q;
+  const from = Math.round(t50);
+  const reach = EDGE_SCAN_S;
+  const a = Math.max(ls + 1, from - reach);
+  const z = Math.min(re - 1, from + reach);
+  if (z - a < 6) return t50;
+  const prog: number[] = [];
+  for (let i = a; i <= z; i++) prog.push((x[i] - muL) / (muR - muL));
+  const smooth = prog.map((_, i) => median(prog.slice(Math.max(0, i - 2), Math.min(prog.length, i + 3))));
+  const m = from - a;
+
+  /** Time at which the smoothed progress crosses `level`, scanning away from the mid-point. */
+  const crossing = (level: number): number | null => {
+    if (smooth[m] >= level) {
+      for (let i = m - 1; i >= 0; i--) {
+        if (smooth[i] < level && (i === 0 || smooth[i - 1] < level)) {
+          const d = smooth[i + 1] - smooth[i];
+          return a + i + (d > 1e-9 ? (level - smooth[i]) / d : 0);
+        }
+      }
+    } else {
+      for (let i = m + 1; i < smooth.length; i++) {
+        if (smooth[i] >= level && (i === smooth.length - 1 || smooth[i + 1] >= level)) {
+          const d = smooth[i] - smooth[i - 1];
+          return a + i - 1 + (d > 1e-9 ? (level - smooth[i - 1]) / d : 1);
+        }
+      }
+    }
+    return null;
+  };
+  const tq = crossing(target);
+  const th = crossing(0.5);
+  if (tq === null || th === null) return t50;
+  // Measure against the same scan at 0.5 so the default stays exactly the least-squares half-way point.
+  return clamp(t50 + (tq - th), ls + margin, re - margin);
 }
+
+/** How far (s) either side of the half-way point to look for other fractions of a change of pace. */
+const EDGE_SCAN_S = 25;

@@ -85,6 +85,13 @@ export interface DetectOptions {
    * ended those steps exactly.
    */
   snapLaps: boolean;
+  /**
+   * Where on a change of pace an interval starts and ends, as the fraction of
+   * the way between the easy and the hard level (0.5 = half-way, the default).
+   * Lower: intervals start earlier and end later. Higher: only the part close
+   * to full pace counts.
+   */
+  edgeFraction: number;
   /** Override the work/rest speed threshold (m/s). Auto when undefined. */
   thresholdSpeed?: number;
 }
@@ -96,6 +103,7 @@ export const DEFAULT_OPTIONS: DetectOptions = {
   minWorkSec: 10,
   minRestSec: 6,
   snapLaps: true,
+  edgeFraction: 0.5,
 };
 
 /** What a rep was prescribed as: a distance (metres) or a duration (seconds). */
