@@ -1,4 +1,5 @@
 import type { Detection } from "../src/analysis/model";
+import { renderMsg } from "../src/i18n";
 import type { TruthSegment } from "../src/sample/synth";
 
 export interface RepScore {
@@ -56,3 +57,6 @@ export const pct = (v: number[], q: number) => {
   const s = [...v].sort((a, b) => a - b);
   return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : NaN;
 };
+
+/** All engine notes of a detection as one English string (for readable assertions). */
+export const noteText = (d: Detection) => d.notes.map((n) => renderMsg(n, "en")).join(" ");

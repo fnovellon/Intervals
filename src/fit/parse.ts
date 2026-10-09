@@ -1,4 +1,5 @@
 import { Decoder, Stream } from "@garmin/fitsdk";
+import { AppError, msg, type Msg } from "../i18n";
 import type {
   Activity,
   LapIntensity,
@@ -50,13 +51,13 @@ export function parseFit(input: ArrayBuffer | Uint8Array): Activity {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const stream = Stream.fromByteArray(Array.from(bytes));
   if (!Decoder.isFIT(stream)) {
-    throw new Error("This does not look like a FIT file (missing .FIT header).");
+    throw new AppError(msg("err.notFit"));
   }
 
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   const decoder = new Decoder(stream);
   if (!decoder.checkIntegrity()) {
-    warnings.push("FIT integrity check failed (truncated or corrupted file); using what could be decoded.");
+    warnings.push(msg("warn.integrity"));
   }
 
   let decoded: { messages: Record<string, Mesg[] | undefined>; errors: unknown[] };
@@ -71,16 +72,16 @@ export function parseFit(input: ArrayBuffer | Uint8Array): Activity {
       mergeHeartRates: true,
     }) as unknown as typeof decoded;
   } catch (e) {
-    throw new Error(`Could not decode FIT file: ${(e as Error).message}`);
+    throw new AppError(msg("err.decode", { detail: (e as Error).message }));
   }
   const { messages, errors } = decoded;
   if (errors?.length) {
-    warnings.push(`FIT decoder reported ${errors.length} issue(s); the file may be partially corrupt.`);
+    warnings.push(msg("warn.decoderIssues", { count: errors.length }));
   }
 
   const rawRecords = (messages.recordMesgs ?? []).filter((m) => toMs(m.timestamp) !== undefined);
   if (rawRecords.length < 10) {
-    throw new Error("No usable record data found. Is this an activity file (not a workout/course/settings file)?");
+    throw new AppError(msg("err.noRecords"));
   }
 
   // --- pick the session (multisport files hold several) ------------------
@@ -90,7 +91,7 @@ export function parseFit(input: ArrayBuffer | Uint8Array): Activity {
     session =
       sessions.find((s) => str(s.sport) === "running") ??
       [...sessions].sort((a, b) => (num(b.totalDistance) ?? 0) - (num(a.totalDistance) ?? 0))[0];
-    warnings.push(`File contains ${sessions.length} sessions; analysing the ${str(session?.sport) ?? "first"} one.`);
+    warnings.push(msg("warn.multiSession", { count: sessions.length, sport: str(session?.sport) ?? "?" }));
   }
   const sport = str(session?.sport) ?? "generic";
   const subSport = str(session?.subSport) ?? "generic";
@@ -224,7 +225,7 @@ export function parseFit(input: ArrayBuffer | Uint8Array): Activity {
     : undefined;
 
   if (!dedup.some((r) => r.speed !== undefined) && !dedup.some((r) => r.distance !== undefined)) {
-    warnings.push("No speed or distance data in this file; pace-based detection is not possible.");
+    warnings.push(msg("warn.noSpeedDistance"));
   }
 
   return {

@@ -1,3 +1,4 @@
+import { msg, type Msg } from "../i18n";
 import { noiseSigma, otsu, pelt } from "./changepoints";
 import type { DetectOptions, SegmentSpec } from "./model";
 import { clamp, median, quantile, type Series } from "./timeseries";
@@ -8,7 +9,7 @@ export interface SignalDetection {
   threshold?: number;
   separation?: number;
   found: boolean;
-  notes: string[];
+  notes: Msg[];
 }
 
 interface Run {
@@ -36,9 +37,9 @@ const CORE_MIN_LEN = 8;
  */
 export function detectSignal(series: Series, signal: Float64Array, opts: DetectOptions): SignalDetection {
   const n = series.n;
-  const notes: string[] = [];
+  const notes: Msg[] = [];
   const whole: SegmentSpec[] = [{ start: 0, end: n - 1, kind: "other", source: "signal" }];
-  if (n < 60) return { specs: whole, found: false, notes: ["Activity too short to analyse."] };
+  if (n < 60) return { specs: whole, found: false, notes: [msg("sig.short")] };
 
   const sens = clamp(opts.sensitivity, 0.25, 4);
   const sigma = noiseSigma(signal);
@@ -64,7 +65,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
   if (threshold === undefined) {
     const core = segs.filter((s) => s.len >= CORE_MIN_LEN && s.mean >= vMoving);
     const split = core.length >= 2 ? otsu(core.map((s) => s.mean), core.map((s) => Math.sqrt(s.len))) : null;
-    if (!split) return { specs: whole, found: false, notes: ["No pace variation found: the activity looks like a steady effort."] };
+    if (!split) return { specs: whole, found: false, notes: [msg("sig.steady")] };
     separation = split.separation;
     const contrast = split.hi - split.lo;
     if (contrast < 1.2 * minStep / Math.sqrt(sens) || contrast / split.lo < 0.08) {
@@ -73,7 +74,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
         found: false,
         separation,
         threshold: split.threshold,
-        notes: ["Pace varies too little to separate hard from easy efforts. Try a higher sensitivity."],
+        notes: [msg("sig.lowContrast")],
       };
     }
     threshold = split.threshold;
@@ -102,7 +103,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
     if (r.cls === 1) lastWork = i;
   });
   if (firstWork < 0) {
-    return { specs: whole, found: false, threshold, separation, notes: ["No hard efforts above the threshold were found."] };
+    return { specs: whole, found: false, threshold, separation, notes: [msg("sig.noWork")] };
   }
 
   const specs: SegmentSpec[] = runs.map((r, i) => ({
@@ -112,7 +113,7 @@ export function detectSignal(series: Series, signal: Float64Array, opts: DetectO
     source: "signal",
   }));
   const reps = specs.filter((s) => s.kind === "work").length;
-  if (reps < 2) notes.push("Only one hard effort found, so this looks like a tempo / time-trial block rather than intervals.");
+  if (reps < 2) notes.push(msg("sig.oneEffort"));
   return { specs, threshold, separation, found: reps >= 2, notes };
 }
 

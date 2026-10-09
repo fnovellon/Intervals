@@ -23,6 +23,14 @@ Get a file: Garmin Connect (web) → open the activity → ⚙ → **Export Orig
 sessions to try (regenerate with `npm run samples`); the landing page also has
 one-click demos.
 
+## Languages
+
+The interface is available in **English and French**. It follows the browser language on first
+visit; the **EN | FR** switch in the header changes it (and is remembered), and `?lang=fr` /
+`?lang=en` in the URL forces one. Messages from the analysis engine are keyed, not hard-coded, so
+they switch language instantly without re-analysing. To add a language, copy `src/i18n/fr.ts`
+(the compiler checks that every key is translated) and register it in `src/i18n/index.ts`.
+
 ## Host it on GitHub Pages
 
 The build is one static file, so any static host works. For GitHub Pages:

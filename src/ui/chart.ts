@@ -1,7 +1,9 @@
 import type { Detection, Segment } from "../analysis/model";
 import { distanceAt, quantile, type Series } from "../analysis/timeseries";
 import { clear, h, s } from "./dom";
-import { distance as fmtDistance, duration, KIND_LABEL, type SpeedDisplay, type Units } from "./format";
+import { getLocale, nf, t } from "../i18n";
+import { structureText } from "../analysis/summary";
+import { distance as fmtDistance, duration, kindLabel, type SpeedDisplay, type Units } from "./format";
 
 export type XMode = "time" | "distance";
 
@@ -70,7 +72,7 @@ export class TimelineChart {
       class: "chart-wrap",
       tabindex: "0",
       role: "group",
-      "aria-label": "Interval timeline. Use left and right arrow keys to inspect values, Enter to select the interval under the cursor.",
+      "aria-label": t("ch.aria"),
       on: { keydown: (e) => this.onKey(e as KeyboardEvent), blur: () => this.hideCursor() },
     });
     this.el.append(this.tooltip);
@@ -83,6 +85,7 @@ export class TimelineChart {
 
   render(props: ChartProps) {
     this.props = props;
+    this.el.setAttribute("aria-label", t("ch.aria"));
     const { series, detection, display } = props;
     const width = this.width;
     const hasHr = series.hasHr;
@@ -142,7 +145,7 @@ export class TimelineChart {
       const hmin = Math.floor((quantile(hrs, 0.002) - 4) / 10) * 10;
       const hmax = Math.ceil((quantile(hrs, 0.998) + 4) / 10) * 10;
       const step = niceStep((hmax - hmin) / 3, [10, 20, 25, 50]);
-      addPanel("hr", "Heart rate (bpm)", 96, (top, height) => ({
+      addPanel("hr", t("ch.hr"), 96, (top, height) => ({
         y: (v) => top + height - ((Math.min(hmax, Math.max(hmin, v)) - hmin) / (hmax - hmin)) * height,
         ticks: ticksBetween(hmin, hmax, step),
         fmt: (v) => String(Math.round(v)),
@@ -157,7 +160,7 @@ export class TimelineChart {
       const span = Math.max(emax - emin, 10 * eleScale);
       const lo2 = emin - span * 0.1;
       const hi2 = emin + span * 1.1;
-      addPanel("ele", `Elevation (${eleUnit})`, 60, (top, height) => ({
+      addPanel("ele", t("ch.ele", { unit: eleUnit }), 60, (top, height) => ({
         y: (v) => top + height - ((v - lo2) / (hi2 - lo2)) * height,
         ticks: ticksBetween(lo2, hi2, niceStep((hi2 - lo2) / 2, [5, 10, 20, 50, 100, 200])),
         fmt: (v) => String(Math.round(v)),
@@ -254,7 +257,7 @@ export class TimelineChart {
       const yt = paceP.y(display.toAxis(detection.threshold));
       lineGroup.append(s("line", { class: "thr-line", x1: plotL, x2: plotR, y1: yt, y2: yt, "stroke-dasharray": "0" }));
       lineGroup.append(
-        s("text", { x: plotR - 4, y: yt - 4, "text-anchor": "end" }, `work/rest threshold ${display.format(detection.threshold)}`),
+        s("text", { x: plotR - 4, y: yt - 4, "text-anchor": "end" }, t("ch.threshold", { v: display.format(detection.threshold) })),
       );
     }
 
@@ -288,7 +291,7 @@ export class TimelineChart {
       if (w < 1) continue;
       const isWork = sg.kind === "work";
       stripG.append(s("rect", { class: isWork ? "seg-work" : "seg-other", x: xa, y: stripTop, width: w, height: STRIP_H, rx: 4 }));
-      const label = isWork ? String(repNumber.get(sg.id)) : sg.kind === "warmup" ? "Warm-up" : sg.kind === "cooldown" ? "Cool-down" : sg.kind === "rest" ? "" : "";
+      const label = isWork ? String(repNumber.get(sg.id)) : sg.kind === "warmup" || sg.kind === "cooldown" ? kindLabel(sg.kind) : "";
       const needed = label.length * 7.2 + 8;
       if (label && w >= needed) {
         stripG.append(s("text", { class: `seg-label${isWork ? "" : " other"}`, x: xa + w / 2, y: stripTop + STRIP_H / 2 + 4, "text-anchor": "middle" }, label));
@@ -340,8 +343,8 @@ export class TimelineChart {
   private summaryLabel(): string {
     const { detection, display } = this.props;
     const sum = detection.summary;
-    if (!detection.intervalsFound || !sum) return `${display.label} timeline. No intervals detected.`;
-    return `${display.label} timeline with ${sum.repCount} detected work intervals: ${sum.structure}. Full values are in the table below.`;
+    if (!detection.intervalsFound || !sum) return t("ch.summaryNone", { label: display.label });
+    return t("ch.summary", { label: display.label, count: sum.repCount, structure: structureText(sum, getLocale()) });
   }
 
   private xAxis(axisTop: number, px: (x: number) => number, props: ChartProps, series: Series): SVGGElement {
@@ -358,7 +361,7 @@ export class TimelineChart {
       const unit = props.units === "imperial" ? 1609.344 : 1000;
       const stepU = niceStep((xd1 - xd0) / unit / approxTicks, [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]);
       ticks = ticksBetween(xd0 / unit, xd1 / unit, stepU).map((v) => v * unit);
-      fmt = (v) => `${+(v / unit).toFixed(2)} ${props.units === "imperial" ? "mi" : "km"}`;
+      fmt = (v) => `${trimDecimal(+(v / unit).toFixed(2))} ${props.units === "imperial" ? "mi" : "km"}`;
     }
     for (const tv of ticks) {
       const x = px(tv);
@@ -376,7 +379,7 @@ export class TimelineChart {
     g.append(s("circle", { class: "handle-knob", cx: x, cy: top + STRIP_H / 2, r: 5 }));
     const hit = s("rect", { class: "handle-hit", x: x - 8, y: top - 2, width: 16, height: STRIP_H + 4 });
     g.append(hit);
-    const title = s("title", {}, "Drag to move this boundary");
+    const title = s("title", {}, t("ch.drag"));
     hit.append(title);
 
     hit.addEventListener("pointerdown", (ev) => {
@@ -555,23 +558,23 @@ export class TimelineChart {
         rows.push({ name: display.label, value: display.formatWithUnit(v), color: "var(--s1)" });
         this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(display.toAxis(v)), r: 4.5, fill: "var(--ink-2)" }));
       } else if (p.key === "hr" && Number.isFinite(series.hr[i])) {
-        rows.push({ name: "Heart rate", value: `${Math.round(series.hr[i])} bpm`, color: "var(--s2)" });
+        rows.push({ name: t("tt.hr"), value: `${Math.round(series.hr[i])} ${t("unit.bpm")}`, color: "var(--s2)" });
         this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.hr[i]), r: 4.5, fill: "var(--s2)" }));
       } else if (p.key === "ele" && Number.isFinite(series.altitude[i])) {
         const k = units === "imperial" ? 3.28084 : 1;
-        rows.push({ name: "Elevation", value: `${Math.round(series.altitude[i] * k)} ${units === "imperial" ? "ft" : "m"}`, color: "var(--s3)" });
+        rows.push({ name: t("tt.ele"), value: `${Math.round(series.altitude[i] * k)} ${units === "imperial" ? "ft" : "m"}`, color: "var(--s3)" });
         this.cross.append(s("circle", { class: "dot", cx: x, cy: p.y(series.altitude[i] * k), r: 4.5, fill: "var(--s3)" }));
       }
     }
     if (series.hasCadence && Number.isFinite(series.cadence[i]) && series.cadence[i] > 0) {
-      rows.push({ name: "Cadence", value: `${Math.round(series.cadence[i])} spm` });
+      rows.push({ name: t("tt.cad"), value: `${Math.round(series.cadence[i])} ${t("unit.spm")}` });
     }
     if (series.hasAltitude && Math.abs(series.grade[i]) >= 0.005) {
-      rows.push({ name: "Grade", value: `${(series.grade[i] * 100).toFixed(1)} %` });
+      rows.push({ name: t("tt.grade"), value: `${nf(series.grade[i] * 100, 1)}\u00A0%` });
     }
 
     const head =
-      seg.kind === "work" ? `Rep ${repNo} · Work` : KIND_LABEL[seg.kind] ?? seg.kind;
+      seg.kind === "work" ? t("tt.rep", { n: repNo }) : kindLabel(seg.kind);
     this.tooltip.replaceChildren(
       h("div", { class: "tt-head" }, head),
       h("div", { class: "tt-sub" }, `${duration(i)} · ${fmtDistance(series.dist[i], units)}`),
@@ -673,4 +676,10 @@ function ticksBetween(lo: number, hi: number, step: number): number[] {
   const start = Math.ceil(lo / step) * step;
   for (let v = start; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
   return out;
+}
+
+/** 1.5 -> "1.5" / "1,5"; 2 -> "2". */
+function trimDecimal(x: number): string {
+  const text = String(x);
+  return getLocale() === "fr" ? text.replace(".", ",") : text;
 }

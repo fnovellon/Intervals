@@ -1,4 +1,5 @@
 import type { Seconds } from "../fit/types";
+import type { Msg } from "../i18n";
 
 export type SegmentKind = "warmup" | "work" | "rest" | "cooldown" | "other";
 export type SegmentSource = "signal" | "lap" | "manual";
@@ -97,10 +98,17 @@ export const DEFAULT_OPTIONS: DetectOptions = {
   snapLaps: true,
 };
 
-export interface RepSet {
+/** What a rep was prescribed as: a distance (metres) or a duration (seconds). */
+export interface RepSpec {
+  basis: "distance" | "time";
+  value: number;
+}
+
+export interface RepSet extends RepSpec {
   /** Indices into Detection.reps. */
   repIndices: number[];
-  /** e.g. "6 × 800 m" */
+  count: number;
+  /** English text, e.g. "6 × 800 m"; use structureText() for other languages. */
   label: string;
 }
 
@@ -133,13 +141,18 @@ export interface Summary {
   hrDrift?: number;
   /** Mean HR drop during recoveries (end of rep -> end of rest), bpm. */
   avgHrRecovery?: number;
+  /** English description, e.g. "6 × 800 m / 90 s rest". See structureText() for other languages. */
   structure: string;
   sets: RepSet[];
+  /** One entry per rep when the session is too varied to group (pyramids, ladders); otherwise null. */
+  sequence: RepSpec[] | null;
+  /** Typical recovery between reps, rounded (seconds). */
+  restValue?: number;
 }
 
 export interface Detection {
   modeUsed: "signal" | "laps";
-  modeReason: string;
+  modeReason: Msg;
   /** Speed channel the segmentation actually ran on. */
   signalUsed: "speed" | "gap";
   segments: Segment[];
@@ -152,6 +165,6 @@ export interface Detection {
   threshold?: number;
   /** Share of speed variance explained by the work/rest split (0..1). */
   separation?: number;
-  notes: string[];
+  notes: Msg[];
   options: DetectOptions;
 }

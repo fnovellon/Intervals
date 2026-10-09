@@ -1,4 +1,5 @@
 import type { Activity } from "../fit/types";
+import { msg } from "../i18n";
 import { detectLaps } from "./laps";
 import { measureAll } from "./measure";
 import { DEFAULT_OPTIONS, type DetectOptions, type Detection, type SegmentSpec } from "./model";
@@ -28,10 +29,10 @@ export function detect(activity: Activity, series: Series, partial: Partial<Dete
   let useGap = options.signal === "gap";
   if (options.signal === "auto" && hillShare(series) >= HILLY_SHARE) {
     useGap = true;
-    notes.push("Hilly route: intervals were segmented on grade-adjusted pace.");
+    notes.push(msg("note.hilly"));
   }
   if (useGap && !series.hasAltitude) {
-    notes.push("No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.");
+    notes.push(msg("note.noAltitude"));
     useGap = false;
   }
   const signalUsed = useGap ? "gap" : "speed";
@@ -50,18 +51,14 @@ export function detect(activity: Activity, series: Series, partial: Partial<Dete
         options,
       });
     }
-    notes.push(
-      options.mode === "laps"
-        ? `Lap mode unavailable (${lap.reason}) — used the pace signal instead.`
-        : `Laps not used: ${lap.reason}`,
-    );
+    notes.push(msg(options.mode === "laps" ? "note.lapUnavailable" : "note.lapsNotUsed", { reason: lap.reason }));
   }
 
   const sig = detectSignal(series, signal, options);
   return assemble(series, sig.specs, {
     modeUsed: "signal",
     signalUsed,
-    modeReason: "Intervals were found from the pace signal (change-point detection).",
+    modeReason: msg("sig.reason"),
     threshold: sig.threshold,
     separation: sig.separation,
     notes: [...notes, ...sig.notes],

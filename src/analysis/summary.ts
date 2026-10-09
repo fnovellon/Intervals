@@ -1,4 +1,5 @@
-import type { RepSet, Segment, Summary } from "./model";
+import { t, type Locale } from "../i18n";
+import type { RepSet, RepSpec, Segment, Summary } from "./model";
 
 const NICE_DISTANCES = [
   50, 100, 150, 200, 250, 300, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000, 2400, 3000, 3200, 4000, 5000, 6000,
@@ -21,25 +22,42 @@ const cv = (v: number[]) => (v.length > 1 && mean(v) > 0 ? Math.sqrt(mean(v.map(
  * unless the mile value is clearly the closer one.
  */
 export function niceDistance(m: number): { value: number; label: string; relError: number } {
+  const r = niceDistanceValue(m);
+  return { ...r, label: distanceLabel(r.value, "en") };
+}
+
+function niceDistanceValue(m: number): { value: number; relError: number } {
   const nearest = (list: number[]) => list.reduce((best, c) => (Math.abs(c - m) < Math.abs(best - m) ? c : best), list[0]);
   const metric = nearest(NICE_DISTANCES);
   const mile = nearest(MILE_DISTANCES);
   const errMetric = Math.abs(metric - m) / m;
   const errMile = Math.abs(mile - m) / m;
-  if (errMile < 0.5 * errMetric && errMile < 0.015) {
-    const mi = mile / MILE;
-    return { value: mile, label: `${mi === 0.25 ? "¼" : mi === 0.5 ? "½" : String(mi)} mi`, relError: errMile };
-  }
+  if (errMile < 0.5 * errMetric && errMile < 0.015) return { value: mile, relError: errMile };
   if (errMetric > 0.04) {
     // Not a standard distance: just print what was run.
     const value = m < 1000 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50;
-    return { value, label: formatMetres(value), relError: errMetric };
+    return { value, relError: errMetric };
   }
-  return { value: metric, label: formatMetres(metric), relError: errMetric };
+  return { value: metric, relError: errMetric };
 }
 
-function formatMetres(m: number): string {
-  return m >= 1000 ? `${trimZeros(m / 1000)} km` : `${Math.round(m)} m`;
+/** "800 m", "1.2 km" / "1,2 km", "¼ mi". */
+export function distanceLabel(value: number, loc: Locale): string {
+  const mile = MILE_DISTANCES.find((d) => Math.abs(d - value) < 0.5);
+  if (mile !== undefined) {
+    const mi = mile / MILE;
+    return `${mi === 0.25 ? "¼" : mi === 0.5 ? "½" : String(mi)} mi`;
+  }
+  if (value >= 1000) return `${trimZeros(value / 1000, loc)} km`;
+  return `${Math.round(value)} m`;
+}
+
+/** "45 s", "2 min", "2:30". */
+export function durationLabel(value: number): string {
+  if (value < 120) return `${value} s`;
+  const min = Math.floor(value / 60);
+  const sec = value % 60;
+  return sec === 0 ? `${min} min` : `${min}:${String(sec).padStart(2, "0")}`;
 }
 
 /**
@@ -50,15 +68,12 @@ function formatMetres(m: number): string {
 export function niceDuration(s: number, fine = false): { value: number; label: string; relError: number } {
   const step = s < 60 ? 5 : s < 120 && fine ? 5 : s <= 300 ? 15 : 30;
   const v = Math.max(step, Math.round(s / step) * step);
-  const relError = Math.abs(v - s) / s;
-  if (v < 120) return { value: v, label: `${v} s`, relError };
-  const min = Math.floor(v / 60);
-  const sec = v % 60;
-  return { value: v, label: sec === 0 ? `${min} min` : `${min}:${String(sec).padStart(2, "0")}`, relError };
+  return { value: v, label: durationLabel(v), relError: Math.abs(v - s) / s };
 }
 
-function trimZeros(x: number): string {
-  return x.toFixed(2).replace(/\.?0+$/, "");
+function trimZeros(x: number, loc: Locale): string {
+  const s = x.toFixed(2).replace(/\.?0+$/, "");
+  return loc === "fr" ? s.replace(".", ",") : s;
 }
 
 /** Group consecutive reps that look like the same prescription. */
@@ -80,7 +95,7 @@ export function groupReps(reps: Segment[]): number[][] {
   return groups;
 }
 
-function describeGroup(reps: Segment[], idx: number[]): string {
+function describeGroup(reps: Segment[], idx: number[]): RepSpec {
   const dist = idx.map((i) => reps[i].distance);
   const dur = idx.map((i) => reps[i].duration);
   const d = niceDistance(median(dist));
@@ -94,8 +109,21 @@ function describeGroup(reps: Segment[], idx: number[]): string {
   if (idx.length >= 3 && cvT < 0.6 * cvD) timeBased = true;
   else if (idx.length >= 3 && cvD < 0.6 * cvT) timeBased = false;
   else timeBased = (d.relError > 0.03 && t.relError < d.relError) || (d.relError > 0.01 && t.relError < d.relError / 3);
-  const what = timeBased ? t.label : d.label;
-  return idx.length === 1 ? what : `${idx.length} × ${what}`;
+  return timeBased ? { basis: "time", value: t.value } : { basis: "distance", value: d.value };
+}
+
+const specLabel = (s: RepSpec, loc: Locale) => (s.basis === "time" ? durationLabel(s.value) : distanceLabel(s.value, loc));
+
+/** "6 × 800 m / 90 s rest", "400 m · 800 m · 1.2 km · 800 m · 400 m / 2 min rest" in the given language. */
+export function structureText(
+  sum: Pick<Summary, "sets" | "sequence" | "restValue">,
+  loc: Locale,
+): string {
+  let text = sum.sequence
+    ? sum.sequence.map((s) => specLabel(s, loc)).join(" · ")
+    : sum.sets.map((s) => (s.count === 1 ? specLabel(s, loc) : `${s.count} × ${specLabel(s, loc)}`)).join(" + ");
+  if (sum.restValue !== undefined) text += ` / ${durationLabel(sum.restValue)} ${t("struct.rest", undefined, loc)}`;
+  return text;
 }
 
 export function summarize(segments: Segment[]): Summary | null {
@@ -103,7 +131,11 @@ export function summarize(segments: Segment[]): Summary | null {
   if (reps.length === 0) return null;
 
   const groups = groupReps(reps);
-  const sets: RepSet[] = groups.map((g) => ({ repIndices: g, label: describeGroup(reps, g) }));
+  const sets: RepSet[] = groups.map((g) => {
+    const spec = describeGroup(reps, g);
+    return { repIndices: g, count: g.length, ...spec, label: "" };
+  });
+  const sequence: RepSpec[] | null = groups.length <= 4 ? null : reps.map((_, i) => describeGroup(reps, [i]));
   const main = [...groups].sort(
     (a, b) => b.length - a.length || sum(b.map((i) => reps[i].distance)) - sum(a.map((i) => reps[i].distance)),
   )[0];
@@ -160,8 +192,9 @@ export function summarize(segments: Segment[]): Summary | null {
   });
   const restTimes = (between.length ? between : rests).map((r) => r.duration);
 
-  let structure = groups.length <= 4 ? sets.map((s) => s.label).join(" + ") : reps.map((_, i) => describeGroup(reps, [i])).join(" · ");
-  if (restTimes.length) structure += ` / ${niceDuration(median(restTimes), true).label} rest`;
+  const restValue = restTimes.length ? niceDuration(median(restTimes), true).value : undefined;
+  for (const s of sets) s.label = s.count === 1 ? specLabel(s, "en") : `${s.count} × ${specLabel(s, "en")}`;
+  const structure = structureText({ sets, sequence, restValue }, "en");
 
   return {
     repCount: reps.length,
@@ -185,6 +218,8 @@ export function summarize(segments: Segment[]): Summary | null {
     avgHrRecovery: drops.length ? mean(drops) : undefined,
     structure,
     sets,
+    sequence,
+    restValue,
   };
 }
 

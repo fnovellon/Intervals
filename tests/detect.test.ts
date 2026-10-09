@@ -3,7 +3,7 @@ import { parseFit } from "../src/fit/parse";
 import { analyseActivity, detect } from "../src/analysis/detect";
 import { buildSeries } from "../src/analysis/timeseries";
 import { encodeFit, synthesize, WORKOUTS } from "../src/sample/synth";
-import { score } from "./helpers";
+import { noteText, score } from "./helpers";
 
 describe("FIT round trip", () => {
   it("encodes a synthetic session and parses it back with the real decoder", () => {
@@ -109,7 +109,7 @@ describe("signal detection", () => {
     const auto = analyseActivity(hills, { mode: "signal" }).detection; // signal: "auto" is the default
     expect(auto.signalUsed).toBe("gap");
     expect(auto.reps).toHaveLength(6);
-    expect(auto.notes.join(" ")).toMatch(/Hilly route/);
+    expect(noteText(auto)).toMatch(/Hilly route/);
 
     const flat = synthesize({ steps: WORKOUTS["8x400"](), seed: 1, lapMode: "none" }).activity;
     expect(analyseActivity(flat, { mode: "signal" }).detection.signalUsed).toBe("speed");
@@ -201,14 +201,14 @@ describe("lap detection", () => {
     const { detection } = analyseActivity(activity, { mode: "auto" });
     expect(detection.modeUsed).toBe("signal");
     expect(detection.reps).toHaveLength(8);
-    expect(detection.notes.join(" ")).toMatch(/automatic splits/);
+    expect(noteText(detection)).toMatch(/automatic splits/);
   });
 
   it("falls back to the signal when laps are requested but absent", () => {
     const { activity } = synthesize({ steps: WORKOUTS["8x400"](), seed: 3, lapMode: "none" });
     const { detection } = analyseActivity(activity, { mode: "laps" });
     expect(detection.modeUsed).toBe("signal");
-    expect(detection.notes.join(" ")).toMatch(/Lap mode unavailable/);
+    expect(noteText(detection)).toMatch(/Lap mode unavailable/);
   });
 });
 
@@ -286,6 +286,6 @@ describe("robustness", () => {
     const { detection } = analyseActivity(activity, { mode: "signal", signal: "gap" });
     expect(detection.reps).toHaveLength(8);
     expect(detection.reps[0].avgHr).toBeUndefined();
-    expect(detection.notes.join(" ")).toMatch(/No altitude/);
+    expect(noteText(detection)).toMatch(/No altitude/);
   });
 });

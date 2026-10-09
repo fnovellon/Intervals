@@ -1,4 +1,5 @@
 import type { Activity, RecordPoint, TimeRange } from "../fit/types";
+import { AppError, msg, type Msg } from "../i18n";
 
 /**
  * Uniform 1 Hz view of an activity. Index i corresponds to t = i seconds on the
@@ -32,7 +33,7 @@ export interface Series {
   speedFromDevice: boolean;
   /** Seconds the device speed lags the distance curve (already compensated in `speed`). */
   speedLag: number;
-  notes: string[];
+  notes: Msg[];
 }
 
 /** Gaps longer than this with no timer event are treated as pauses; shorter ones are smart-recording gaps. */
@@ -49,7 +50,7 @@ const MIN_GRADE_SPAN_M = 15;
 const MAX_SPEED: Record<string, number> = { running: 11, walking: 4, hiking: 5, cycling: 30 };
 
 export function buildSeries(activity: Activity): Series {
-  const notes: string[] = [];
+  const notes: Msg[] = [];
   const recs = activity.records;
   const n = Math.max(2, Math.floor(recs[recs.length - 1].t) + 1);
   const grid = (): Float64Array => new Float64Array(n).fill(NaN);
@@ -115,7 +116,7 @@ export function buildSeries(activity: Activity): Series {
         const v = Number.isFinite(speedRaw[i]) ? speedRaw[i] : 0;
         dist[i] = dist[i - 1] + (paused[i] ? 0 : v);
       }
-      notes.push("Distance reconstructed by integrating speed.");
+      notes.push(msg("note.distFromSpeed"));
     } else {
       const hav = haversineDistance(recs);
       if (hav) {
@@ -127,9 +128,9 @@ export function buildSeries(activity: Activity): Series {
           while (j + 1 < ts.length && ts[j + 1] <= i) j++;
           dist[i] = j + 1 < ts.length ? ds[j] + ((i - ts[j]) / (ts[j + 1] - ts[j])) * (ds[j + 1] - ds[j]) : ds[j];
         }
-        notes.push("Distance reconstructed from GPS positions.");
+        notes.push(msg("note.distFromGps"));
       } else {
-        throw new Error("This file has no speed, distance or GPS data, so pace cannot be analysed.");
+        throw new AppError(msg("err.noPaceData"));
       }
     }
   }
@@ -152,7 +153,7 @@ export function buildSeries(activity: Activity): Series {
       const b = Math.min(n - 1, i + 1);
       speedRaw[i] = (dist[b] - dist[a]) / (b - a);
     }
-    notes.push("Speed derived from distance (no device speed in file).");
+    notes.push(msg("note.speedFromDist"));
   } else {
     fillNaNs(speedRaw);
   }
@@ -166,7 +167,7 @@ export function buildSeries(activity: Activity): Series {
     if (speedLag >= MIN_LAG_TO_APPLY_S) {
       speed = shiftEarlier(speed, speedLag);
       for (let i = 0; i < n; i++) if (paused[i]) speed[i] = 0;
-      notes.push(`Device speed trails the distance curve by about ${speedLag.toFixed(1)} s; boundaries were compensated.`);
+      notes.push(msg("note.lag", { lag: Math.round(speedLag * 10) / 10 }));
     } else {
       speedLag = 0;
     }

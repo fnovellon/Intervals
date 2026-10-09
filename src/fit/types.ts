@@ -1,3 +1,5 @@
+import type { Msg } from "../i18n";
+
 /** Normalised, SDK-independent representation of a Garmin activity. */
 
 /** Seconds since the first record of the activity (wall-clock, pauses included). */
@@ -75,7 +77,7 @@ export interface Activity {
   totalTimer: Seconds;
   totalDistance: number;
   device?: string;
-  warnings: string[];
+  warnings: Msg[];
 }
 
 export const RUNNING_SPORTS = new Set(["running", "walking", "hiking", "trail"]);
