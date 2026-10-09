@@ -23,6 +23,18 @@ Get a file: Garmin Connect (web) → open the activity → ⚙ → **Export Orig
 sessions to try (regenerate with `npm run samples`); the landing page also has
 one-click demos.
 
+## Host it on GitHub Pages
+
+The build is one static file, so any static host works. For GitHub Pages:
+
+1. Merge this branch into `main`.
+2. In the repo go to **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab).
+
+It is then served at `https://<user>.github.io/Intervals/`. The workflow in
+`.github/workflows/pages.yml` runs the tests, builds, and deploys. The site is
+public, but files you drop on it are still analysed only in the visitor's browser.
+
 ## What it detects
 
 | Session type | How it is handled |
