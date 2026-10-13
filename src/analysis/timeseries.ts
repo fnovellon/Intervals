@@ -1,6 +1,7 @@
 import type { Activity, RecordPoint, TimeRange } from "../fit/types";
 import { AppError, msg, type Msg } from "../i18n";
 import type { PaceBasis } from "./model";
+import { findTrack, rescaleOnTrack, SPEED_LONG, SPEED_SHORT, speedLapLength, type TrackFit, type TrackInfo } from "./track";
 
 /**
  * Uniform 1 Hz view of an activity. Index i corresponds to t = i seconds on the
@@ -44,7 +45,17 @@ export interface Series {
    * 1 means the two agree; 0.9 means the watch's speed reads 10 % lower than its own distance.
    */
   speedRatio: number;
+  /** Set when the file was recorded on a running track (see track.ts). */
+  track?: TrackInfo;
   notes: Msg[];
+}
+
+export interface SeriesOptions {
+  /**
+   * Real length of one lap of the track (metres). A watch in track mode counts every lap as 400 m; when the
+   * file shows that, the distance recorded on the track is rescaled to this length.
+   */
+  trackLength?: number;
 }
 
 /** Gaps longer than this with no timer event are treated as pauses; shorter ones are smart-recording gaps. */
@@ -60,7 +71,7 @@ const MIN_GRADE_SPAN_M = 15;
 
 const MAX_SPEED: Record<string, number> = { running: 11, walking: 4, hiking: 5, cycling: 30 };
 
-export function buildSeries(activity: Activity): Series {
+export function buildSeries(activity: Activity, options: SeriesOptions = {}): Series {
   const notes: Msg[] = [];
   const recs = activity.records;
   const n = Math.max(2, Math.floor(recs[recs.length - 1].t) + 1);
@@ -155,6 +166,23 @@ export function buildSeries(activity: Activity): Series {
   }
   for (let i = 1; i < n; i++) if (dist[i] < dist[i - 1]) dist[i] = dist[i - 1];
 
+  // ---- running track ------------------------------------------------------------
+  // A watch in track mode counts 400 m per lap whatever the track: bring the distance back to the real lap length.
+  let track: TrackInfo | undefined;
+  let trackFit: TrackFit | null = null;
+  if (activity.records.some((r) => r.lat !== undefined)) {
+    trackFit = findTrack(recs, dist, n);
+    if (trackFit) {
+      track = { laps: trackFit.laps.length, recordedLap: trackFit.recordedLap };
+      const length = options.trackLength;
+      if (length !== undefined && length >= 100 && length <= 1000 && Math.abs(length / trackFit.recordedLap - 1) > 0.005) {
+        rescaleOnTrack(dist, trackFit, length / trackFit.recordedLap);
+        track.appliedLength = length;
+        notes.push(msg("note.trackApplied", { lap: Math.round(trackFit.recordedLap), length: Math.round(length) }));
+      }
+    }
+  }
+
   // ---- speed ------------------------------------------------------------------
   const speedFromDevice = speedRaw.filter(Number.isFinite).length >= 0.5 * n;
   if (!speedFromDevice) {
@@ -187,6 +215,16 @@ export function buildSeries(activity: Activity): Series {
   // How well do the watch's speed and its distance agree? (Different sensors can feed each: GPS speed
   // against an accelerometer or foot-pod distance, for instance.) The tables use distance / time, the
   // chart plots the speed, so a gap here is exactly the gap a reader would see between them.
+  // On a track the recorded speed tells whether the 400 m laps are real: a shorter lap means the distance is too long.
+  if (track && trackFit && speedFromDevice) {
+    const lap = speedLapLength(trackFit, speed);
+    track.speedLap = lap;
+    if (!track.appliedLength && lap < SPEED_SHORT * track.recordedLap) {
+      notes.push(msg("note.trackSuspect", { lap: Math.round(track.recordedLap), laps: track.laps, est: Math.round(lap) }));
+    } else if (track.appliedLength && lap > SPEED_LONG * track.appliedLength) {
+      notes.push(msg("note.trackLane", { length: Math.round(track.appliedLength), est: Math.round(lap) }));
+    }
+  }
   let speedRatio = 1;
   if (speedFromDevice) {
     let sv = 0;
@@ -198,7 +236,8 @@ export function buildSeries(activity: Activity): Series {
       sdist += implied;
     }
     if (sdist > 0) speedRatio = sv / sdist;
-    if (Math.abs(speedRatio - 1) >= SPEED_MISMATCH) {
+    // (on a track, the track notes explain the gap better than a general note does)
+    if (Math.abs(speedRatio - 1) >= SPEED_MISMATCH && !track) {
       notes.push(msg(speedRatio < 1 ? "note.speedLower" : "note.speedHigher", { pct: Math.round(Math.abs(speedRatio - 1) * 1000) / 10 }));
     }
   }
@@ -250,6 +289,7 @@ export function buildSeries(activity: Activity): Series {
     speedFromDevice,
     speedLag,
     speedRatio,
+    track,
     notes,
   };
 }

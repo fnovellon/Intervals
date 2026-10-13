@@ -49,6 +49,8 @@ interface State {
   placing: { id: number; edge: "start" | "end" } | null;
   /** Whether the settings panel is expanded (a per-viewer convenience, remembered). */
   settingsOpen: boolean;
+  /** Real length of a lap of the athlete's track, metres (remembered). */
+  trackLength?: number;
 }
 
 const DEMOS: Array<{
@@ -101,6 +103,7 @@ export function mountApp(root: HTMLElement) {
     loading: false,
     placing: null,
     settingsOpen: readSettingsOpen(),
+    trackLength: readTrackLength(),
   };
 
   // ------------------------------------------------------------------ static shell
@@ -286,7 +289,7 @@ export function mountApp(root: HTMLElement) {
   }
 
   function startAnalysis(activity: Activity, name: string, isDemo: boolean, optionOverrides: Partial<DetectOptions>, demoId?: string) {
-    const series = buildSeries(activity);
+    const series = buildSeries(activity, { trackLength: state.trackLength });
     state.activity = activity;
     state.series = series;
     state.fileName = name;
@@ -323,6 +326,14 @@ export function mountApp(root: HTMLElement) {
     if (!d || !state.series) return;
     state.detection = rebuild(state.series, specsOf(d), { ...d, options: { ...d.options, paceBasis: basis } });
     renderResults();
+  }
+
+  /** The track length changed: the distance itself changes, so the series is built again. */
+  function reanalyse() {
+    if (!state.activity) return;
+    state.series = buildSeries(state.activity, { trackLength: state.trackLength });
+    renderToolbar(); // the header shows the corrected distance
+    recompute();
   }
 
   // ------------------------------------------------------------------ editing
@@ -453,7 +464,7 @@ export function mountApp(root: HTMLElement) {
       "div",
       { class: "activity-head" },
       h("h2", {}, state.demoId ? t("demo.simulated", { name: t(`demo.${state.demoId}` as Key) }) : (state.fileName ?? "")),
-      h("span", { class: "meta" }, `${dateLabel(a.startTimeMs)} · ${sportLabel(a)} · ${fmtDistance(a.totalDistance, state.units)} · ${duration(a.totalElapsed)}${a.device ? ` · ${a.device}` : ""}`),
+      h("span", { class: "meta" }, `${dateLabel(a.startTimeMs)} · ${sportLabel(a)} · ${fmtDistance(state.series?.track?.appliedLength !== undefined ? state.series.dist[state.series.n - 1] : a.totalDistance, state.units)} · ${duration(a.totalElapsed)}${a.device ? ` · ${a.device}` : ""}`),
     );
 
     const segmented = <T extends string>(items: Array<[T, string]>, get: () => T, set: (v: T) => void) => {
@@ -592,6 +603,21 @@ export function mountApp(root: HTMLElement) {
       recompute();
     });
 
+    const trackInput = h("input", { type: "number", min: "100", max: "1000", step: "1", id: "f-track", placeholder: "—" });
+    trackInput.value = state.trackLength !== undefined ? String(state.trackLength) : "";
+    trackInput.addEventListener("change", () => {
+      const v = Number(trackInput.value);
+      state.trackLength = trackInput.value.trim() !== "" && v >= 100 && v <= 1000 ? Math.round(v) : undefined;
+      trackInput.value = state.trackLength !== undefined ? String(state.trackLength) : "";
+      try {
+        if (state.trackLength === undefined) localStorage.removeItem("trackLength");
+        else localStorage.setItem("trackLength", String(state.trackLength));
+      } catch {
+        /* storage blocked: the length only lasts for this visit */
+      }
+      reanalyse();
+    });
+
     const bar = h(
       "div",
       { class: "toolbar", role: "region", "aria-label": t("tb.aria") },
@@ -606,6 +632,7 @@ export function mountApp(root: HTMLElement) {
         ? [h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.basis")), segmented<PaceBasis>([["distance", t("tb.basisDist")], ["device", t("tb.basisDev")]], () => state.options.paceBasis, setPaceBasis), desc("tb.basisDesc"))]
         : []),
       h("div", { class: "field" }, h("div", { class: "checkrow" }, snap, h("label", { for: "f-snap" }, t("tb.snap"))), desc("tb.snapDesc")),
+      ...(state.series?.track ? [h("div", { class: "field" }, h("label", { for: "f-track" }, t("tb.trackLength")), trackInput, desc("tb.trackLengthDesc"))] : []),
       h("div", { class: "field" }, h("span", { class: "lbl" }, t("tb.units")), segmented<Units>([["metric", t("tb.km")], ["imperial", t("tb.mi")]], () => state.units, (v) => { state.units = v; renderToolbarUnits(); renderResults(); }), desc("tb.unitsDesc")),
     );
     bar.append(edgesGroup);
@@ -1046,7 +1073,7 @@ const HEADER_TITLE_KEYS: Record<string, Key> = {
 const headerTitle = (col: string): string | undefined => (HEADER_TITLE_KEYS[col] ? t(HEADER_TITLE_KEYS[col]) : undefined);
 
 /** Notes that explain how the numbers were obtained, shown as plain text rather than as a warning. */
-const INFO_NOTES = new Set<Key>(["note.lag", "note.distFromSpeed", "note.distFromGps", "note.speedFromDist", "note.hilly", "note.lapsNotUsed"]);
+const INFO_NOTES = new Set<Key>(["note.lag", "note.distFromSpeed", "note.distFromGps", "note.speedFromDist", "note.hilly", "note.lapsNotUsed", "note.trackApplied"]);
 
 function sportLabel(a: Activity): string {
   const sub = a.subSport && a.subSport !== "generic" ? ` (${a.subSport})` : "";
@@ -1103,4 +1130,14 @@ function readSettingsOpen(): boolean {
     /* storage blocked */
   }
   return window.innerWidth >= 720;
+}
+
+/** The track length the viewer entered before, if any. */
+function readTrackLength(): number | undefined {
+  try {
+    const v = Number(localStorage.getItem("trackLength"));
+    return v >= 100 && v <= 1000 ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }

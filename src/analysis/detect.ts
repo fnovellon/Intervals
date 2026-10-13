@@ -6,7 +6,7 @@ import { measureAll } from "./measure";
 import { DEFAULT_OPTIONS, type DetectOptions, type Detection, type SegmentSpec } from "./model";
 import { detectSignal } from "./signal";
 import { summarize } from "./summary";
-import { buildSeries, hillShare, type Series } from "./timeseries";
+import { buildSeries, hillShare, type Series, type SeriesOptions } from "./timeseries";
 
 /** Share of moving time on slopes >= 4 % above which grade-adjusted pace is used in "auto". */
 const HILLY_SHARE = 0.08;
@@ -17,8 +17,8 @@ export interface Analysis {
 }
 
 /** Decode-to-result in one call: build the 1 Hz series and detect intervals. */
-export function analyseActivity(activity: Activity, options: Partial<DetectOptions> = {}): Analysis {
-  const series = buildSeries(activity);
+export function analyseActivity(activity: Activity, options: Partial<DetectOptions> = {}, seriesOptions: SeriesOptions = {}): Analysis {
+  const series = buildSeries(activity, seriesOptions);
   return { series, detection: detect(activity, series, options) };
 }
 

@@ -122,19 +122,28 @@ for the cleanest pace, knowing that reps then come out about 5 s / 7 % short.
 `samples/8x400-slow-acceleration.fit` has a slow ~30 s build-up into each rep: try the three strategies
 and watch the starts and ends move.
 
+**On a running track.** A Garmin watch in track mode counts every lap as exactly 400 m, whatever the track. On a 333 m
+track every distance, pace and half-Cooper VMA is then about 20 % too high, while the recorded speed is right. The app
+recognises the signature in the file (laps counted at the same length, near 400 m, found from the GPS positions); it
+warns when the recorded speed gives clearly shorter laps, and when you enter the length of a lap in *Track lap length*
+(remembered in your browser) it rescales the distance recorded on the track. Distances are then counted on lane 1: if you
+ran in an outer lane (each lane adds about 2 % to a lap) the real distance is a little longer, and a note says so when the
+recorded speed shows it. Very poor GPS can hide the laps; the setting then does not appear.
+
 **Two ways to read a pace.** A Garmin file holds a distance curve and, separately, a speed channel. Most of the
-time they agree. They can differ for two reasons:
+time they agree. They can differ for three reasons:
 
 - the watch smooths its speed over several seconds and reports it a few seconds late (the app measures that delay,
   often 4-6 s, and compensates for it when placing the edges), so on a 30-60 s rep the speed never reaches the
   pace you actually ran: the live pace on the watch understates short efforts;
 - on some files the speed channel reads a few percent below (or above) the speed implied by the distance, whatever the
-  smoothing. When that exceeds 3 % the app says so.
+  smoothing. When that exceeds 3 % the app says so;
+- on a running track, the watch's distance can be 20 % too long (see above).
 
 By default the app reports **distance ÷ time**, the same as the lap table in Garmin Connect, and plots the speed implied
 by the distance curve, so chart and table agree. Choose **Watch speed** in *Pace from* to see what the watch showed
-instead. Selecting an interval always shows both numbers, and the CSV has both. The file alone cannot tell which one
-is closer to the truth: check a known distance (a 400 m track lap, a measured km) if it matters.
+instead. Selecting an interval always shows both numbers, and the CSV has both. Outside the track case, the file alone
+cannot tell which one is closer to the truth: check a known distance (a measured km) if it matters.
 
 ## How the detection works
 

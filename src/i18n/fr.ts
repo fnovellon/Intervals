@@ -59,6 +59,10 @@ export const fr: Record<Key, string> = {
     "Dans ce fichier, la vitesse enregistrée par la montre (celle qu’affiche son écran pendant la course) est en moyenne inférieure de {pct}\u00A0% à celle que donne sa propre distance. Par défaut, l’application utilise distance ÷ temps, comme le tableau des tours de Garmin Connect\u00A0; «\u00A0Allure d’après\u00A0» permet de passer à la vitesse de la montre.",
   "note.speedHigher":
     "Dans ce fichier, la vitesse enregistrée par la montre (celle qu’affiche son écran pendant la course) est en moyenne supérieure de {pct}\u00A0% à celle que donne sa propre distance. Par défaut, l’application utilise distance ÷ temps, comme le tableau des tours de Garmin Connect\u00A0; «\u00A0Allure d’après\u00A0» permet de passer à la vitesse de la montre.",
+  "note.trackApplied": "Sur la piste, la montre a compté {lap} m par tour, comme si elle faisait {lap} m. Les distances et les allures y ont été recalculées pour des tours de {length} m.",
+  "note.trackSuspect":
+    "La montre a compté exactement {lap} m à chacun des {laps} tours qu’elle a vus sur une piste, mais ta vitesse enregistrée ne donne qu’environ {est} m par tour. Ta piste est sans doute plus courte que {lap} m\u00A0: les distances et les allures y sont donc trop élevées dans la même proportion. Indique la longueur d’un tour dans les réglages («\u00A0Longueur d’un tour de piste\u00A0») pour les corriger.",
+  "note.trackLane": "Sur la piste, ta vitesse enregistrée correspond à des tours d’environ {est} m, plus longs que tes {length} m\u00A0: tu courais sans doute dans un couloir extérieur (chaque couloir ajoute environ 2\u00A0% à un tour). Les distances sont comptées sur le couloir 1\u00A0; choisis «\u00A0Vitesse montre\u00A0» pour des allures qui suivent ta vitesse réelle.",
   "note.hilly": "Parcours vallonné : les intervalles ont été segmentés sur l’allure ajustée à la pente.",
   "note.noAltitude":
     "Pas de données d’altitude dans ce fichier : l’allure ajustée à la pente est indisponible, l’allure brute est utilisée.",
@@ -118,6 +122,9 @@ export const fr: Record<Key, string> = {
   "tb.basis": "Allure d’après",
   "tb.basisDist": "Distance ÷ temps",
   "tb.basisDev": "Vitesse montre",
+  "tb.trackLength": "Longueur d’un tour de piste (m)",
+  "tb.trackLengthDesc":
+    "Si tu cours sur une piste, indique la longueur d’un tour (333, 400…). Les montres Garmin en mode piste comptent 400 m par tour\u00A0: sur une piste plus courte, toutes les distances et les allures sont trop élevées. Laisse vide si tu ne cours pas sur piste.",
   "tb.units": "Unités",
   "tb.km": "km",
   "tb.mi": "mi",

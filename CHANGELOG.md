@@ -10,6 +10,22 @@ this file ("What's new").
 How to release: add the changes under a new `## [x.y.z] - YYYY-MM-DD` heading, set the
 same number in `package.json`, and run `npm test` (a test checks that both agree).
 
+## [0.8.0] - 2026-10-13
+
+### Added
+- **Track lap length** setting. A Garmin in track mode counts every lap of a running track as exactly 400 m,
+  whatever the track: on a 333 m track every distance and pace is 20 % too high (and so is a half-Cooper
+  VMA). The app recognises the signature in the file (laps counted at the same length, near 400 m, from the
+  GPS positions), and when you enter the real length of a lap it rescales the distance recorded on the
+  track: rep distances, paces, the half-Cooper VMA, the total distance in the header. The length is
+  remembered in your browser and only applied to files that show the signature.
+- A warning when the file shows that signature and the recorded speed adds up to clearly shorter laps than
+  400 m ("your track is probably shorter"), with the lap length the speed implies; and a note when, once
+  corrected, the speed implies longer laps than your track (an outer lane).
+
+### Changed
+- On a track file, the generic "speed and distance disagree" note is replaced by these more precise ones.
+
 ## [0.7.0] - 2026-10-13
 
 ### Added

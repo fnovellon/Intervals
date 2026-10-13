@@ -57,6 +57,10 @@ export const en = {
     "In this file the speed recorded by the watch (what its screen shows while you run) is on average {pct} % lower than the speed implied by its own distance. By default the app uses distance ÷ time, like the lap table in Garmin Connect; “Pace from” switches to the watch speed.",
   "note.speedHigher":
     "In this file the speed recorded by the watch (what its screen shows while you run) is on average {pct} % higher than the speed implied by its own distance. By default the app uses distance ÷ time, like the lap table in Garmin Connect; “Pace from” switches to the watch speed.",
+  "note.trackApplied": "On the track the watch counted {lap} m for every lap, as if it were {lap} m long. Distances and paces there were rescaled to your {length} m laps.",
+  "note.trackSuspect":
+    "The watch counted exactly {lap} m for each of the {laps} laps it saw on a track, but your recorded speed adds up to only about {est} m per lap. Your track is probably shorter than {lap} m, so distances and paces on it are too high by the same share. Enter the length of one lap in the settings (“Track lap length”) to correct them.",
+  "note.trackLane": "On the track your recorded speed adds up to laps of about {est} m, longer than your {length} m: you were probably running in an outer lane (each lane adds about 2 % to a lap). Distances are counted on lane 1; choose “Watch speed” for paces that follow your real speed.",
   "note.hilly": "Hilly route: intervals were segmented on grade-adjusted pace.",
   "note.noAltitude": "No altitude data in this file: grade-adjusted pace is unavailable, using plain pace.",
   "note.lapUnavailable": "Lap mode unavailable ({reason}) — used the pace signal instead.",
@@ -112,6 +116,9 @@ export const en = {
   "tb.basis": "Pace from",
   "tb.basisDist": "Distance ÷ time",
   "tb.basisDev": "Watch speed",
+  "tb.trackLength": "Track lap length (m)",
+  "tb.trackLengthDesc":
+    "If you run on a track, enter the length of one lap (333, 400…). Garmin watches in track mode count 400 m per lap, so on a shorter track every distance and pace comes out too high. Leave empty if you do not run on a track.",
   "tb.units": "Units",
   "tb.km": "km",
   "tb.mi": "mi",

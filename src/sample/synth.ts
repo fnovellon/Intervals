@@ -47,6 +47,12 @@ export interface SynthOptions {
    * (right for hills, where the terrain, not the athlete, defines the boundary).
    */
   truthAt?: "crossing" | "command";
+  /**
+   * Run on a closed loop (a running track). GPS positions are recorded, and the recorded distance counts
+   * `recordedLap` metres for every lap of `length` metres: a Garmin in track mode counts 400 m per lap, so on a
+   * 333 m track every distance is 20 % too long. Leave `recordedLap` out for an exact distance.
+   */
+  track?: { length: number; recordedLap?: number; gpsNoise?: number };
   /** Start time of the recording (epoch ms). */
   startMs?: number;
   sport?: string;
@@ -159,6 +165,7 @@ export function synthesize(opts: SynthOptions): Synthetic {
   let noise = 0;
   let hr = 95;
   let alt = 120;
+  const posNoise = [0, 0];
   let pausedSince: number | undefined;
   let standing = 0;
   let hasStarted = false;
@@ -187,9 +194,19 @@ export function synthesize(opts: SynthOptions): Synthetic {
     if (vTrue > 1) hasStarted = true;
 
     const spm = 150 + 12 * Math.min(vTrue, 6) + 1.5 * gauss();
+    let where: { lat: number; lon: number } | undefined;
+    if (opts.track) {
+      const sd = opts.track.gpsNoise ?? 2.5;
+      posNoise[0] = 0.8 * posNoise[0] + 0.6 * sd * gauss();
+      posNoise[1] = 0.8 * posNoise[1] + 0.6 * sd * gauss();
+      const [x, y] = ovalPoint(dist10[k], opts.track.length);
+      where = { lat: 45 + (y + posNoise[1]) / 110574, lon: 5 + (x + posNoise[0]) / (111320 * Math.cos((45 * Math.PI) / 180)) };
+    }
+    const lapScale = opts.track?.recordedLap ? opts.track.recordedLap / opts.track.length : 1;
     records.push({
       t: i,
-      distance: Math.round(dist10[k] * 100) / 100,
+      ...where,
+      distance: Math.round(dist10[k] * lapScale * 100) / 100,
       speed: Math.round(Math.max(0, reported) * 1000) / 1000,
       heartRate: Math.round(hr + gauss()),
       cadence: vTrue < 0.5 ? 0 : Math.round(spm),
@@ -255,6 +272,25 @@ export function synthesize(opts: SynthOptions): Synthetic {
     warnings: [],
   };
   return { activity, truth };
+}
+
+/**
+ * A point on a running track (two straights and two half circles, 21 % of the length per straight) after
+ * `d` metres, in metres from the middle of the infield. Lane 1, anticlockwise.
+ */
+export function ovalPoint(d: number, length: number): [number, number] {
+  const straight = 0.21 * length;
+  const r = (length - 2 * straight) / (2 * Math.PI);
+  const u = ((d % length) + length) % length;
+  const arc = Math.PI * r;
+  if (u < straight) return [-straight / 2 + u, -r];
+  if (u < straight + arc) {
+    const a = -Math.PI / 2 + (u - straight) / r;
+    return [straight / 2 + r * Math.cos(a), r * Math.sin(a)];
+  }
+  if (u < 2 * straight + arc) return [straight / 2 - (u - straight - arc), r];
+  const a = Math.PI / 2 + (u - 2 * straight - arc) / r;
+  return [-straight / 2 + r * Math.cos(a), r * Math.sin(a)];
 }
 
 function nearestDistance(records: RecordPoint[], t: number): number {
