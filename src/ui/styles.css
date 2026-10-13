@@ -982,3 +982,30 @@ footer .whatsnew summary {
 table.segments tr.hl td {
   background: var(--band-hover);
 }
+
+/* Half-Cooper test card */
+.hero.cooper .splits {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.hero.cooper .split b {
+  margin-right: 5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.hero.cooper .split {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.cooper-note {
+  margin: 8px 0 0;
+  max-width: 78ch;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}

@@ -676,7 +676,7 @@ export class TimelineChart {
     }
 
     const head =
-      seg.kind === "work" ? t("tt.rep", { n: repNo }) : kindLabel(seg.kind);
+      seg.kind === "work" && detection.cooper ? t("tt.cooper") : seg.kind === "work" ? t("tt.rep", { n: repNo }) : kindLabel(seg.kind);
     // What the whole interval did, below what is happening at the pointer.
     const stats: Array<{ name: string; value: string }> = [
       { name: t("tt.duration"), value: duration(seg.duration, seg.duration < 120 ? 1 : 0) },

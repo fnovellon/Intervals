@@ -15,6 +15,7 @@ const FILES: Array<[string, WorkoutName, LapMode, Partial<SynthOptions>]> = [
   ["fartlek-8x2min", "fartlek", "none", {}],
   ["hill-repeats", "hills", "none", { truthAt: "command" }],
   ["12x200", "12x200", "none", {}],
+  ["half-cooper-test", "cooper", "none", {}],
 ];
 
 describe.skipIf(!process.env.GENERATE_SAMPLES)("sample files", () => {

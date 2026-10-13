@@ -10,6 +10,16 @@ this file ("What's new").
 How to release: add the changes under a new `## [x.y.z] - YYYY-MM-DD` heading, set the
 same number in `package.json`, and run `npm test` (a test checks that both agree).
 
+## [0.7.0] - 2026-10-13
+
+### Added
+- **Half-Cooper test detection**: a running session made of one six-minute effort between a warm-up and
+  a cool-down is recognised as a test, shown as warm-up / test / cool-down, and the **VMA** (maximal
+  aerobic speed) is estimated as the distance run in 6:00 divided by 100, with the pace at that speed, a
+  rough VO₂max (3.5 × VMA), minute-by-minute pace, heart rate and the first-half / second-half comparison.
+  Moving the start of the effort recomputes the estimate.
+- A simulated half-Cooper test as a demo on the home page and as `samples/half-cooper-test.fit`.
+
 ## [0.6.0] - 2026-10-09
 
 ### Added

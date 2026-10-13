@@ -407,6 +407,18 @@ export const WORKOUTS = {
     ...rep(12, { kind: "work", distance: 200, pace: 170 }, { kind: "rest", duration: 45, pace: 360 }).slice(0, -1),
     { kind: "cooldown", distance: 1200, pace: 360 },
   ],
+  /**
+   * Half-Cooper test: a warm-up with three strides, a stop, a short jog, then six minutes flat out at 4:10 per km
+   * (1 440 m, MAS 14.4 km/h), and a cool-down.
+   */
+  cooper: (): StepSpec[] => [
+    { kind: "warmup", duration: 720, pace: 345 },
+    ...rep(3, { kind: "work", duration: 20, pace: 230 }, { kind: "rest", duration: 40, pace: 380 }),
+    { kind: "rest", duration: 60, pace: 0 },
+    { kind: "rest", duration: 10, pace: 400 },
+    { kind: "work", duration: 360, pace: 250 },
+    { kind: "cooldown", duration: 600, pace: 380 },
+  ],
 } satisfies Record<string, () => StepSpec[]>;
 
 export type WorkoutName = keyof typeof WORKOUTS;

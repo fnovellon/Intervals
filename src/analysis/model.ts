@@ -1,5 +1,6 @@
 import type { Seconds } from "../fit/types";
 import type { Msg } from "../i18n";
+import type { CooperTest } from "./cooper";
 
 export type SegmentKind = "warmup" | "work" | "rest" | "cooldown" | "other";
 export type SegmentSource = "signal" | "lap" | "manual";
@@ -222,4 +223,6 @@ export interface Detection {
   separation?: number;
   notes: Msg[];
   options: DetectOptions;
+  /** Set when the session is a half-Cooper test (six minutes flat out); then the segments are warm-up / test / cool-down. */
+  cooper?: CooperTest;
 }

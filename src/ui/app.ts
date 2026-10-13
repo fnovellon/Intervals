@@ -1,4 +1,5 @@
 import { detect, rebuild } from "../analysis/detect";
+import type { CooperTest } from "../analysis/cooper";
 import { structureParts } from "../analysis/summary";
 import { AppError, getLocale, LOCALES, msg, nf, onLocaleChange, pct, renderMsg, setLocale, t, tn, type Key, type Locale, type Msg } from "../i18n";
 import type { DetectMode, DetectOptions, Detection, PaceBasis, Segment, SegmentKind, SegmentSpec, SignalKind, StartFrom } from "../analysis/model";
@@ -63,6 +64,7 @@ const DEMOS: Array<{
   { id: "fartlek", workout: "fartlek", lapMode: "none" },
   { id: "hills", workout: "hills", lapMode: "none", synth: { truthAt: "command" }, },
   { id: "12x200", workout: "12x200", lapMode: "none" },
+  { id: "cooper", workout: "cooper", lapMode: "none" },
 ];
 
 let newsOpen = false;
@@ -649,7 +651,9 @@ export function mountApp(root: HTMLElement) {
     resultsArea.append(h("div", { class: "mode-note" }, noteParts.join(" ")));
 
     // hero
-    if (d.intervalsFound && sum) {
+    if (d.cooper) {
+      resultsArea.append(cooperCard(d.cooper, sd));
+    } else if (d.intervalsFound && sum) {
       resultsArea.append(
         h(
           "section",
@@ -795,6 +799,56 @@ export function mountApp(root: HTMLElement) {
       state.edited ? h("button", { class: "btn small", on: { click: recompute } }, t("insp.reset")) : null,
     );
     return checks.length ? h("div", {}, bar, h("div", { class: "hint insp-check" }, checks.join(" "))) : bar;
+  }
+
+  /** The result of a half-Cooper test: the estimated VMA first, then what it is made of. */
+  function cooperCard(c: CooperTest, sd: ReturnType<typeof speedDisplay>) {
+    const tiles: Array<{ label: string; value: string; unit?: string; note?: string }> = [
+      { label: t("cooper.tile.dist"), value: nf(c.distance, 0), unit: "m" },
+      { label: t("cooper.tile.pace"), value: sd.format(c.speed), unit: sd.unit },
+    ];
+    if (c.avgHr !== undefined) tiles.push({ label: t("cooper.tile.hr"), value: bpm(c.avgHr), unit: t("unit.bpm"), note: t("cooper.tile.hrNote", { peak: bpm(c.maxHr) }) });
+    const slower = c.fadePct > 0;
+    tiles.push({
+      label: t("cooper.tile.even"),
+      value: t(slower ? "cooper.tile.slower" : "cooper.tile.faster", { pct: pct(Math.abs(c.fadePct), 1) }),
+      note: t("cooper.tile.evenNote"),
+    });
+    const notes: string[] = [];
+    if (c.fromLap) notes.push(t("cooper.note.lap"));
+    if (c.netClimb !== undefined && Math.abs(c.netClimb) >= 8) notes.push(t("cooper.note.hilly", { m: signed(c.netClimb, 0) }));
+    if (c.fadePct >= 6) notes.push(t("cooper.note.faded", { pct: pct(c.fadePct, 0) }));
+    if (c.fadePct <= -6) notes.push(t("cooper.note.sped", { pct: pct(-c.fadePct, 0) }));
+    notes.push(t("cooper.note.edit"));
+    return h(
+      "section",
+      { class: "hero cooper", "aria-label": t("cooper.kicker") },
+      h("div", { class: "kicker" }, t("cooper.kicker")),
+      h("div", { class: "big" }, t("cooper.vma", { vma: nf(c.vma, 1) })),
+      h("div", { class: "sub" }, t("cooper.sub", { dist: nf(c.distance, 0), pace: sd.formatWithUnit(c.speed), vo2: nf(c.vo2max, 0) })),
+      h(
+        "div",
+        { class: "tiles" },
+        ...tiles.map((tile) =>
+          h(
+            "div",
+            { class: "tile" },
+            h("div", { class: "label" }, tile.label),
+            h("div", { class: "value" }, tile.value, tile.unit ? h("small", {}, tile.unit) : null),
+            tile.note ? h("div", { class: "note" }, tile.note) : null,
+          ),
+        ),
+      ),
+      h(
+        "div",
+        { class: "splits" },
+        h("span", { class: "lbl" }, t("cooper.splits")),
+        ...c.splits.map((m, i) => h("span", { class: "split" }, h("b", {}, String(i + 1)), sd.format(m / 60))),
+      ),
+      h("p", { class: "cooper-note" }, t("cooper.why")),
+      h("p", { class: "cooper-note" }, t("cooper.how")),
+      ...notes.map((n) => h("p", { class: "cooper-note" }, n)),
+    );
   }
 
   function tilesFor(d: Detection, sd: ReturnType<typeof speedDisplay>) {

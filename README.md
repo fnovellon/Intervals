@@ -54,6 +54,7 @@ public, but files you drop on it are still analysed only in the visitor's browse
 | Fartlek / no laps / auto-km laps | Intervals are found from the pace signal alone. Automatic per-km laps are recognised and ignored, even when the watch tags each of them "interval" (fenix): a structured workout needs laps with *different* intensities. |
 | Variable reps (pyramids, ladders) | Each rep is measured separately; the description is the sequence (`400 m · 800 m · 1.2 km · 800 m · 400 m / 2 min rest`). |
 | Hills | Grade-adjusted pace (Minetti cost model) is used automatically on hilly routes, so a slow climb is correctly "hard" and the jog down "easy". |
+| Half-Cooper test (6 minutes flat out) | Recognised and kept apart from intervals: warm-up / test / cool-down, with the VMA estimated from the distance (see below). |
 | Standing rests with auto-pause | A pause is a rest segment with its true duration, not a gap. |
 
 Every setting has a short description in plain words right under it, and the panel can be collapsed
@@ -75,6 +76,27 @@ Hovering shows what you are pointing at:
   under it (duration, distance, average pace, best 5 s, heart rate, cadence, drift), and the interval is highlighted.
 - **In the detected session** (the big line at the top) and **in the table**, hovering a rep, a set (`6 × 800 m`) or a
   row highlights the matching interval(s) on the chart, and hovering the chart highlights the matching row and rep.
+
+## Half-Cooper test and VMA
+
+When a running session contains a half-Cooper test, the app says so and estimates the **VMA** (maximal aerobic
+speed): the distance run in the six minutes, divided by 100, in km/h (1 440 m in 6:00 is 14.4 km/h). It also gives the
+pace at that speed, a rough VO₂max (3.5 × VMA), the pace of each minute, the heart rate and how the second half compared
+with the first. It is an estimate that assumes a truly maximal effort on flat ground without strong wind (about 1 km/h).
+
+How a test is recognised (all of it must hold, so that an interval session or a race is never taken for one):
+
+1. The candidate is the fastest 6:00 stretch of the recording that has no stop in it.
+2. It is clearly faster (at least 1.2 ×) than the warm-up before it and the cool-down after it; at least a minute of
+   warm-up must be recorded.
+3. Its end is found like the end of any interval (the pace drops when the watch beeps at 6:00) and the test is the
+   six minutes before it; a 6:00 lap recorded by the watch fixes the start instead. The hard effort, measured edge to
+   edge, lasts about six minutes (5:40 to 6:40).
+4. It is one even effort: slow just before it, no minute far off the others, no collapse between the two halves.
+5. It is the only one: if the rest of the session spends more than 90 s at that pace, it is an interval session.
+
+Limits: running and walking only; a session that also holds intervals is treated as intervals; the 12-minute Cooper
+test is not recognised (yet).
 
 ## Detection settings
 
